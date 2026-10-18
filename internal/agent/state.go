@@ -46,6 +46,8 @@ type RunState struct {
 	// build, test or lint command; VerifyNudged once the model was asked to check.
 	Unverified   bool `json:"unverified,omitempty"`
 	VerifyNudged bool `json:"verify_nudged,omitempty"`
+	// StopHooks counts the replies Stop hooks held back.
+	StopHooks int `json:"stop_hooks,omitempty"`
 	// Await is set while the run waits for what an await call asked for.
 	Await *tools.Await `json:"await,omitempty"`
 }

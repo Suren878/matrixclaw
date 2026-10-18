@@ -148,6 +148,7 @@ type Store interface {
 	MemoryStore
 	ApprovalStore
 	PermissionRuleStore
+	FileCheckpointStore
 }
 
 // RunStarter starts the execution of an accepted run; by default the core

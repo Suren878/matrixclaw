@@ -264,3 +264,64 @@ func TestVersion3SetupFileThatCannotConvertIsLeftAlone(t *testing.T) {
 		t.Fatalf("backup written: %v", err)
 	}
 }
+
+func TestDaemonCheckpointsSwitch(t *testing.T) {
+	for _, tc := range []struct {
+		name, checkpoints string
+		on                bool
+		wantErr           string
+	}{
+		{"absent", ``, true, ""},
+		{"off", `, "checkpoints": {"enabled": false}`, false, ""},
+		{"on", `, "checkpoints": {"enabled": true}`, true, ""},
+		{"not a bool", `, "checkpoints": {"enabled": "no"}`, false, "enabled"},
+		{"unknown key", `, "checkpoints": {"keep": 5}`, false, "unknown keys daemon.checkpoints.keep"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "setup.json")
+			file := `{"version": 4, "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/tmp/m.db"` + tc.checkpoints + `}, "clients": {"telegram": {"enabled": false}}}`
+			if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := NewFileStore(path).Load()
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("load error = %v, want %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.Daemon.Checkpoints.On(); got != tc.on {
+				t.Fatalf("On() = %v, want %v", got, tc.on)
+			}
+		})
+	}
+}
+
+func TestSetupHooksAreValidatedOnLoad(t *testing.T) {
+	for _, tc := range []struct{ hooks, want string }{
+		{`"hooks": [{"event": "AfterEdit", "command": "x"}]`, `hooks[0]: event is "AfterEdit"`},
+		{`"hooks": [{"event": "PreToolUse", "matcher": "bash", "command": "x", "async": true}]`, `unknown keys hooks[0].async`},
+		{`"diagnostics": {"commands": {"go": "x"}}`, `diagnostics: commands key "go"`},
+	} {
+		path := filepath.Join(t.TempDir(), "setup.json")
+		file := `{"version": 4, "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/tmp/m.db"}, "clients": {"telegram": {"enabled": false}}, ` + tc.hooks + `}`
+		if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewFileStore(path).Load(); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("load error = %v, want %s", err, tc.want)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "setup.json")
+	file := `{"version": 4, "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/tmp/m.db"}, "clients": {"telegram": {"enabled": false}}, "hooks": [{"event": "Stop", "command": "make test", "timeout": 300}], "diagnostics": {"commands": {".py": ""}}}`
+	if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := NewFileStore(path).Load()
+	if err != nil || len(cfg.Hooks) != 1 || cfg.Hooks[0].Timeout != 300 {
+		t.Fatalf("cfg = %+v, err = %v", cfg.Hooks, err)
+	}
+}

@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
@@ -14,6 +15,10 @@ type Config struct {
 	Daemon           DaemonConfig     `json:"daemon"`
 	Clients          ClientsConfig    `json:"clients"`
 	Modules          ModulesConfig    `json:"modules,omitempty"`
+	// Hooks are commands run at the agent's seams (docs/HOOKS.md).
+	Hooks []hooks.Hook `json:"hooks,omitempty"`
+	// Diagnostics overrides or turns off the checks after file edits.
+	Diagnostics hooks.Diagnostics `json:"diagnostics,omitzero"`
 }
 
 type AssistantConfig struct {
@@ -58,6 +63,19 @@ type DaemonConfig struct {
 	// BackgroundAgents bounds the background subagents one session runs at
 	// once; 0 keeps the default of 4.
 	BackgroundAgents int `json:"background_agents,omitempty"`
+	// Checkpoints controls the file checkpoints taken before tool batches.
+	Checkpoints CheckpointsConfig `json:"checkpoints,omitzero"`
+}
+
+// CheckpointsConfig controls file checkpoints (docs/CHECKPOINTS.md); they are
+// on unless Enabled is false.
+type CheckpointsConfig struct {
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// On reports whether file checkpoints are taken.
+func (c CheckpointsConfig) On() bool {
+	return c.Enabled == nil || *c.Enabled
 }
 
 // RunBudgetsConfig overrides the built-in run budget per trigger.

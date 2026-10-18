@@ -141,14 +141,16 @@ func (c *Core) nativeEngine(ctx context.Context, claimed claimedRun, session Ses
 		return agent.Task{}, nil, err
 	}
 	turn.RunID, turn.Continues, turn.ClientCapabilities = run.ID, continues, run.ClientCapabilities
+	batch := &batchSnapshot{}
 	engine := agent.New(agent.Config{
-		Journal:     coreJournal{c: c},
-		Tools:       coreTools{c: c, turn: turn, authorized: &sync.Map{}},
+		Journal:     coreJournal{c: c, batch: batch},
+		Tools:       coreTools{c: c, turn: turn, authorized: &sync.Map{}, batch: batch},
 		Approvals:   coreApprovals{c: c, sessionID: session.ID},
 		Inbox:       coreInbox{c: c, session: session},
 		Sink:        coreSink{c: c},
 		Prompts:     &corePrompts{c: c, turn: turn},
 		Todos:       coreTodos{c: c},
+		Hooks:       c.engineHooks(session, turn),
 		Attachments: c.attachments,
 		Now:         func() time.Time { return c.now().UTC() },
 		NewID:       c.newID,

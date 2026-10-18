@@ -9,23 +9,44 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// callPermission is how the permission rules see one call and treat it;
-// subjects are all the call reaches (request names the first); ask is set
-// when the call waits for approval; root is the working directory suggestions
-// stay inside.
+// callPermission is how the permission rules and the PreToolUse hooks see one
+// call and treat it; subjects are all the call reaches (request names the
+// first); ask is set when the call waits for approval; root is the working
+// directory suggestions stay inside.
 type callPermission struct {
 	request  permission.Request
 	subjects []permission.Subject
 	verdict  permission.Verdict
 	ask      bool
+	granted  bool
 	secret   bool
 	root     string
 	rules    []permission.Rule
 	preset   []permission.Rule
+	session  Session
+	hook     hookVerdict
+}
+
+// hookVerdict is what the call's PreToolUse hooks decided: why they block or
+// ask, the arguments they rewrote the call to and context for its result.
+type hookVerdict struct {
+	blocked string
+	asked   string
+	args    json.RawMessage
+	context string
+}
+
+// input is the call with the arguments its hooks rewrote it to.
+func (check callPermission) input(call tools.Call) tools.Call {
+	if check.hook.args != nil {
+		call.Args = check.hook.args
+	}
+	return call
 }
 
 // guard lets the call recheck the rules for subjects it reaches later and
@@ -34,6 +55,19 @@ func (check callPermission) guard(call tools.Call) tools.Call {
 	call.Recheck = check.recheck
 	call.Skip = permission.SearchSkip(check.request, check.rules)
 	return call
+}
+
+// refusal is what the model reads for a call a deny rule or a hook blocks.
+func (check callPermission) refusal() (string, bool) {
+	switch {
+	case check.verdict.Effect == permission.Deny && check.verdict.Rule.ID == permission.PlanRuleID:
+		return planModeBlocked, true
+	case check.verdict.Effect == permission.Deny:
+		return "Blocked by rule " + check.verdict.Rule.String(), true
+	case check.hook.blocked != "":
+		return "Blocked by hook: " + check.hook.blocked, true
+	}
+	return "", false
 }
 
 // recheck refuses a subject the call reaches later, such as a redirect's host,
@@ -73,15 +107,56 @@ func (c *Core) checkPermission(ctx context.Context, sessionID string, spec tools
 	root := realPath(cmp.Or(normalizeWorkingDir(session.WorkingDir), normalizeWorkingDir(call.WorkingDir)))
 	preset := permission.Preset(string(NormalizePermissionMode(string(session.PermissionMode))), root)
 	verdict := permission.EvaluateEach(request, subjects, rules, preset)
-	check := callPermission{request: request, subjects: subjects, verdict: verdict, root: root, rules: rules, preset: preset}
+	check := callPermission{request: request, subjects: subjects, verdict: verdict, root: root, rules: rules, preset: preset, session: session}
 	check.secret = verdict.Effect == "" && spec.Effect == tools.EffectReadOnly && holdsSecrets(request.Subject)
 	check.ask = verdict.Effect == permission.Ask || verdict.Effect == "" && (spec.Asks || check.secret)
 	if check.ask && call.ToolCallID != "" {
-		granted, err := c.callGranted(ctx, sessionID, call.RunID, call.ToolCallID)
-		if err != nil {
+		if check.granted, err = c.callGranted(ctx, sessionID, call.RunID, call.ToolCallID); err != nil {
 			return callPermission{}, err
 		}
-		check.ask = !granted
+		check.ask = !check.granted
+	}
+	return check, nil
+}
+
+// permitCall is checkPermission with the call's PreToolUse hooks as a rule
+// source below the stored deny rules: they run for a call no deny rule blocks
+// and may block it, make it ask or allow it. Arguments they rewrite must pass
+// the call's checks and meet the rules again.
+func (c *Core) permitCall(ctx context.Context, name string, spec tools.Spec, call tools.Call) (callPermission, error) {
+	check, err := c.checkPermission(ctx, call.SessionID, spec, call)
+	if err != nil || check.verdict.Effect == permission.Deny || c.hooks == nil {
+		return check, err
+	}
+	scope := hookScope(check.session, call.RunID, call.WorkingDir)
+	decision := c.hooks.PreToolUse(ctx, scope, hooks.ToolCall{ID: call.ToolCallID, Name: name, Input: call.Args, File: subjectFile(check.request.Subject)})
+	if decision.Input != nil {
+		call.Args = decision.Input
+		if _, _, err := c.checkToolCall(ctx, name, call); err != nil {
+			if !errors.Is(err, ErrInvalidInput) {
+				return callPermission{}, err
+			}
+			check.hook.blocked = "its PreToolUse hook rewrote the input to one that fails: " + err.Error()
+			return check, nil
+		}
+		if check, err = c.checkPermission(ctx, call.SessionID, spec, call); err != nil || check.verdict.Effect == permission.Deny {
+			return check, err
+		}
+		check.hook.args = decision.Input
+	}
+	check.hook.context = decision.Context
+	switch decision.Permission {
+	case hooks.Deny:
+		check.hook.blocked = decision.Reason
+	case hooks.Ask:
+		if !check.granted && call.ToolCallID != "" {
+			if check.granted, err = c.callGranted(ctx, call.SessionID, call.RunID, call.ToolCallID); err != nil {
+				return callPermission{}, err
+			}
+		}
+		check.ask, check.hook.asked = !check.granted, cmp.Or(decision.Reason, "a PreToolUse hook")
+	case hooks.Allow:
+		check.ask = false
 	}
 	return check, nil
 }
@@ -169,14 +244,6 @@ func realPath(path string) string {
 		return path
 	}
 	return policy.RealPath
-}
-
-// blockedResult is what the model reads for a call a deny rule blocks.
-func blockedResult(rule permission.Rule) tools.Result {
-	if rule.ID == permission.PlanRuleID {
-		return tools.Result{Content: planModeBlocked, Status: tools.ResultStatusError}
-	}
-	return tools.Result{Content: "Blocked by rule " + rule.String(), Status: tools.ResultStatusError}
 }
 
 // holdsSecrets reports whether a file or directory subject is where keys and

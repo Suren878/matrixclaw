@@ -9,7 +9,9 @@ import (
 
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
+	"github.com/Suren878/matrixclaw/internal/checkpoint"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/ids"
 )
 
@@ -58,6 +60,8 @@ type Core struct {
 	backgroundTasks int
 	// commandEnv is the environment of shell commands; nil inherits the daemon's.
 	commandEnv func() []string
+	// hooks runs the user's hooks and the checks after edits; nil runs none.
+	hooks *hooks.Runner
 	// backgroundAgents bounds the background subagents of one session.
 	backgroundAgents int
 	// executing counts the runs goroutineStarter started; once stopped it
@@ -69,6 +73,11 @@ type Core struct {
 	startingAgents map[string]map[string]bool
 	// runEnds are the callers waiting for each run to end; guarded by mu.
 	runEnds map[string][]chan struct{}
+	// checkpoints snapshots working directories before tool batches that
+	// change files; nil when file checkpoints are off.
+	checkpoints *checkpoint.Store
+	// checkpointFailures holds the snapshot failures already logged.
+	checkpointFailures sync.Map
 }
 
 type SkillsPromptContextRequest struct {

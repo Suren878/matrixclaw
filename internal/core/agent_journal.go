@@ -9,9 +9,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-// coreJournal persists engine writes through the store.
+// coreJournal persists engine writes through the store; its checkpoint
+// before a model call starts the run's next tool batch.
 type coreJournal struct {
-	c *Core
+	c     *Core
+	batch *batchSnapshot
 }
 
 func (j coreJournal) Load(ctx context.Context, sessionID string) (agent.Window, error) {
@@ -80,6 +82,9 @@ func (j coreJournal) FinishStreaming(ctx context.Context, message transcript.Mes
 }
 
 func (j coreJournal) Checkpoint(ctx context.Context, state agent.State) error {
+	if state.Phase == agent.PhaseModel {
+		j.batch.next()
+	}
 	return j.c.saveEngineCheckpoint(ctx, state)
 }
 
