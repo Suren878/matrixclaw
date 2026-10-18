@@ -437,7 +437,9 @@ type Fixture struct {
 	Locks      *toolsched.Locks
 	// Hooks, when set, runs the run's hooks.
 	Hooks agent.Hooks
-	ids   int
+	// Verifier, when set, checks the session goal.
+	Verifier agent.Verifier
+	ids      int
 }
 
 // NewFixture returns fakes with the run's user message already journaled.
@@ -492,6 +494,7 @@ func (f *Fixture) Engine() *agent.Engine {
 		Prompts:    f.Prompts,
 		Todos:      f.Todos,
 		Hooks:      f.Hooks,
+		Verifier:   f.Verifier,
 		Now:        now,
 		Sleep:      sleep,
 		ModelSlots: f.ModelSlots,
