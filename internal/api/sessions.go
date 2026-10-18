@@ -24,7 +24,6 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 	input := core.CreateSessionInput{
 		Title:           req.Title,
 		Kind:            core.SessionKind(req.Kind),
-		RuntimeID:       core.SessionRuntime(req.RuntimeID),
 		WorkingDir:      req.WorkingDir,
 		ProviderID:      req.ProviderID,
 		ModelID:         req.ModelID,

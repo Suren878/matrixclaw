@@ -52,8 +52,8 @@ type policy struct {
 var (
 	open  = policy{name: "open"}
 	owner = policy{name: "owner", ownerOnly: true}
-	// The session is the path's {id}, or that of the run, task, approval or
-	// automation job it names, or the one the JSON body names (session_id, or
+	// The session is the path's {id}, or that of the run, task, approval,
+	// automation job or permission rule it names, or the one the JSON body names (session_id, or
 	// the client's binding).
 	sessionInPath = policy{name: "session(id)", session: func(_ *Server, r *http.Request) (string, error) {
 		return r.PathValue("id"), nil
@@ -73,6 +73,11 @@ var (
 	sessionOfJob = policy{name: "session(job)", session: func(s *Server, r *http.Request) (string, error) {
 		job, err := s.Automation.GetJob(r.Context(), r.PathValue("id"))
 		return job.SessionID, err
+	}}
+	// A global rule names no session; its handler keeps it for the owner.
+	sessionOfRule = policy{name: "session(rule)", session: func(s *Server, r *http.Request) (string, error) {
+		rule, err := s.Core.GetPermissionRule(r.Context(), r.PathValue("id"))
+		return rule.SessionID, err
 	}}
 	sessionInBody = policy{name: "session(body)", session: bodySession}
 )

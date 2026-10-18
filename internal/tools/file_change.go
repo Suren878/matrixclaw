@@ -25,12 +25,14 @@ const (
 	snippetLineRunes = 300
 )
 
-// FileChange is what write, edit and multiedit do to one file, as their
-// approval shows it and their result's metadata keeps it. A side over the
-// size kept whole holds only the changes and their context, the unchanged
-// runs between them replaced by the same note on both sides.
+// FileChange is what write, edit, multiedit or apply_patch does to one file,
+// as their approval shows it and their result's metadata keeps it. A side over
+// the size kept whole holds only the changes and their context, the unchanged
+// runs between them replaced by the same note on both sides. MovedFrom is the
+// file a patch moved here.
 type FileChange struct {
 	Path       string `json:"file_path"`
+	MovedFrom  string `json:"moved_from,omitempty"`
 	OldContent string `json:"old_content,omitempty"`
 	NewContent string `json:"new_content,omitempty"`
 	Additions  int    `json:"additions"`

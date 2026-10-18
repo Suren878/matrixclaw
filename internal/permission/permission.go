@@ -4,6 +4,7 @@
 package permission
 
 import (
+	"cmp"
 	"os"
 	"path/filepath"
 	"slices"
@@ -50,7 +51,18 @@ type Rule struct {
 	Scope     Scope     `json:"scope"`
 	SessionID string    `json:"session_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+	// calls limits a preset rule to calls by what they do; stored rules match any.
+	calls callFilter
 }
+
+// callFilter is which calls a preset rule matches by whether they change anything.
+type callFilter uint8
+
+const (
+	anyCall callFilter = iota
+	changingCalls
+	readOnlyCalls
+)
 
 // String is the rule as users read it, such as "bash: go test:*".
 func (r Rule) String() string {
@@ -65,6 +77,10 @@ func (r Rule) wildcard() bool {
 // covers reports whether the rule applies to req: its tool, a tool whose rules
 // cover it, or every tool.
 func (r Rule) covers(req Request) bool {
+	switch {
+	case r.calls == changingCalls && req.ReadOnly, r.calls == readOnlyCalls && !req.ReadOnly:
+		return false
+	}
 	return r.Tool == "*" || req.names(r.Tool)
 }
 
@@ -102,11 +118,13 @@ type Subject struct {
 
 // Request is one tool call as rules see it; Tool is the name rules are written
 // for and CoveredBy the other tools whose rules also apply, such as read for
-// the searches, which read what they find.
+// the searches, which read what they find. ReadOnly marks a call that changes
+// nothing.
 type Request struct {
 	Tool      string
 	CoveredBy []string
 	Subject   Subject
+	ReadOnly  bool
 }
 
 func (req Request) names(tool string) bool {
@@ -120,16 +138,17 @@ type Verdict struct {
 	Rule   Rule
 }
 
-// Evaluate applies rules to req: deny rules first, then ask rules, then allow
-// rules; preset rules are consulted only when none of those decided. A risky
-// command line asks whenever a deny or ask rule may catch its tool.
+// Evaluate applies rules to req: deny rules first (the preset's too), then ask
+// rules, then allow rules; preset allow rules are consulted only when none of
+// those decided. A risky command line asks whenever a deny or ask rule may
+// catch its tool.
 func Evaluate(req Request, rules []Rule, preset []Rule) Verdict {
 	var line Line
 	if req.Subject.Kind == KindCommand {
 		line = ParseLine(req.Subject.Value)
 	}
 	for _, effect := range []Effect{Deny, Ask} {
-		for _, rule := range rules {
+		for _, rule := range slices.Concat(rules, preset) {
 			if rule.Effect == effect && rule.covers(req) && rule.touches(req.Subject, line) {
 				return Verdict{Effect: effect, Rule: rule}
 			}
@@ -146,6 +165,37 @@ func Evaluate(req Request, rules []Rule, preset []Rule) Verdict {
 		}
 	}
 	return Verdict{}
+}
+
+// EvaluateEach applies rules to req once for each of the subjects one call
+// reaches: any deny decides, then any ask; the call is allowed only when every
+// subject is. With no subjects it is Evaluate of req.
+func EvaluateEach(req Request, subjects []Subject, rules []Rule, preset []Rule) Verdict {
+	if len(subjects) == 0 {
+		return Evaluate(req, rules, preset)
+	}
+	var allowed, asked Verdict
+	undecided := false
+	for _, subject := range subjects {
+		req.Subject = subject
+		switch verdict := Evaluate(req, rules, preset); verdict.Effect {
+		case Deny:
+			return verdict
+		case Ask:
+			asked = cmp.Or(asked, verdict)
+		case Allow:
+			allowed = cmp.Or(allowed, verdict)
+		default:
+			undecided = true
+		}
+	}
+	switch {
+	case asked.Effect != "":
+		return asked
+	case undecided:
+		return Verdict{}
+	}
+	return allowed
 }
 
 // touches reports whether the rule matches the subject or, for a command line,
@@ -235,6 +285,24 @@ func commandAllowedBy(rules []Rule, req Request, words []string) (Rule, bool) {
 		}
 	}
 	return Rule{}, false
+}
+
+// SuggestEach is Suggest for a call that reaches several subjects; ok only
+// when every subject suggests the same rule.
+func SuggestEach(req Request, subjects []Subject, root string) (Suggestion, bool) {
+	if len(subjects) == 0 {
+		return Suggest(req, root)
+	}
+	var first Suggestion
+	for i, subject := range subjects {
+		req.Subject = subject
+		suggestion, ok := Suggest(req, root)
+		if !ok || i > 0 && suggestion != first {
+			return Suggestion{}, false
+		}
+		first = suggestion
+	}
+	return first, true
 }
 
 // Suggest proposes the rule an "Always allow" answer saves for req. A command
@@ -335,14 +403,19 @@ func homeDir() string {
 }
 
 // Mode names are the permission presets: default leaves every tool to its own
-// default, accept_edits also allows file edits inside the working directory and
-// full_auto allows every call no rule denies or asks for. Every mode also
-// carries Builtin.
+// default, accept_edits also allows file edits inside the working directory,
+// full_auto allows every call no rule denies or asks for, and plan denies every
+// call that may change something while read-only bash runs without asking.
+// Every mode also carries Builtin.
 const (
 	ModeDefault     = "default"
 	ModeAcceptEdits = "accept_edits"
 	ModeFullAuto    = "full_auto"
+	ModePlan        = "plan"
 )
+
+// PlanRuleID is the ID of plan mode's deny rule, so a blocked call can say why.
+const PlanRuleID = "preset_plan"
 
 // Builtin are the allow rules of every mode, which no stored rule removes: a
 // session's ask or deny rule still wins over them. Listing memory never asks,
@@ -364,6 +437,11 @@ func Preset(mode string, root string) []Rule {
 		return append(preset,
 			Rule{Tool: "write", Pattern: pattern, Effect: Allow},
 			Rule{Tool: "edit", Pattern: pattern, Effect: Allow},
+		)
+	case ModePlan:
+		return append(preset,
+			Rule{ID: PlanRuleID, Tool: "*", Effect: Deny, calls: changingCalls},
+			Rule{Tool: "bash", Effect: Allow, calls: readOnlyCalls},
 		)
 	default:
 		return preset

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 	_ "time/tzdata"
@@ -95,5 +96,13 @@ func TestGuidanceNamesOnlyToolsTheRunHas(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestPatchToolsGetTheGuidanceOfEditTools(t *testing.T) {
+	patchTools := NewTools("read", "glob", "grep", "ls", "write", "apply_patch", "bash", "task_output", "task_kill", "todo_write", "web_fetch", "web_search")
+	patch, edit := CodingGuidance(patchTools, true), CodingGuidance(writerTools, true)
+	if sections := strings.Count(patch, "\n\n"); sections != strings.Count(edit, "\n\n") || len(strings.Split(patch, "\n")) != len(strings.Split(edit, "\n")) {
+		t.Fatalf("apply_patch guidance:\n%s\n\nedit guidance:\n%s", patch, edit)
 	}
 }

@@ -190,7 +190,7 @@ func (p *Permissions) permissionOptions() []permissionOption {
 
 func (p *Permissions) hasDiffView() bool {
 	switch p.permission.ToolName {
-	case toolNameEdit, toolNameWrite, toolNameMultiEdit:
+	case toolNameEdit, toolNameWrite, toolNameMultiEdit, toolNameApplyPatch:
 		return true
 	}
 	return false

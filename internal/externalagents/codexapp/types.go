@@ -26,29 +26,23 @@ type InitializeResponse struct {
 }
 
 type ThreadStartParams struct {
-	Model                 string         `json:"model,omitempty"`
-	ModelProvider         string         `json:"modelProvider,omitempty"`
-	CWD                   string         `json:"cwd,omitempty"`
-	ApprovalPolicy        string         `json:"approvalPolicy,omitempty"`
-	ApprovalsReviewer     string         `json:"approvalsReviewer,omitempty"`
-	Sandbox               string         `json:"sandbox,omitempty"`
-	BaseInstructions      string         `json:"baseInstructions,omitempty"`
-	DeveloperInstructions string         `json:"developerInstructions,omitempty"`
-	Ephemeral             *bool          `json:"ephemeral,omitempty"`
-	Config                map[string]any `json:"config,omitempty"`
+	Model             string `json:"model,omitempty"`
+	ModelProvider     string `json:"modelProvider,omitempty"`
+	CWD               string `json:"cwd,omitempty"`
+	ApprovalPolicy    string `json:"approvalPolicy,omitempty"`
+	ApprovalsReviewer string `json:"approvalsReviewer,omitempty"`
+	Sandbox           string `json:"sandbox,omitempty"`
+	Ephemeral         *bool  `json:"ephemeral,omitempty"`
 }
 
 type ThreadResumeParams struct {
-	ThreadID              string         `json:"threadId"`
-	Model                 string         `json:"model,omitempty"`
-	ModelProvider         string         `json:"modelProvider,omitempty"`
-	CWD                   string         `json:"cwd,omitempty"`
-	ApprovalPolicy        string         `json:"approvalPolicy,omitempty"`
-	ApprovalsReviewer     string         `json:"approvalsReviewer,omitempty"`
-	Sandbox               string         `json:"sandbox,omitempty"`
-	BaseInstructions      string         `json:"baseInstructions,omitempty"`
-	DeveloperInstructions string         `json:"developerInstructions,omitempty"`
-	Config                map[string]any `json:"config,omitempty"`
+	ThreadID          string `json:"threadId"`
+	Model             string `json:"model,omitempty"`
+	ModelProvider     string `json:"modelProvider,omitempty"`
+	CWD               string `json:"cwd,omitempty"`
+	ApprovalPolicy    string `json:"approvalPolicy,omitempty"`
+	ApprovalsReviewer string `json:"approvalsReviewer,omitempty"`
+	Sandbox           string `json:"sandbox,omitempty"`
 }
 
 type ThreadStartResponse struct {
@@ -95,14 +89,6 @@ type TurnStartParams struct {
 type TurnStartResponse struct {
 	Turn Turn `json:"turn"`
 }
-
-type TurnSteerParams struct {
-	ThreadID       string      `json:"threadId"`
-	ExpectedTurnID string      `json:"expectedTurnId"`
-	Input          []UserInput `json:"input"`
-}
-
-type TurnSteerResponse struct{}
 
 type TurnInterruptParams struct {
 	ThreadID string `json:"threadId"`
@@ -151,7 +137,14 @@ type TurnError struct {
 type Notification struct {
 	Method string
 	Params any
-	Raw    []byte
+}
+
+// DecodeFailure stands for params of a known notification the client could
+// not decode; the IDs are what could be read of its thread and turn.
+type DecodeFailure struct {
+	ThreadID string
+	TurnID   string
+	Err      error
 }
 
 type ItemNotification struct {

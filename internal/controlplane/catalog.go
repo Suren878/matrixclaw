@@ -10,6 +10,7 @@ const (
 	CommandSession     CommandID = "session"
 	CommandProvider    CommandID = "provider"
 	CommandPermissions CommandID = "permissions"
+	CommandPlan        CommandID = "plan"
 	CommandContext     CommandID = "context"
 	CommandUsage       CommandID = "usage"
 	CommandContinue    CommandID = "continue"
@@ -47,6 +48,7 @@ var commandCatalog = []CommandSpec{
 	{ID: CommandSession, Command: "/session", Title: "Session commands"},
 	{ID: CommandProvider, Command: "/provider", Title: "Provider", Menu: true, Public: true},
 	{ID: CommandPermissions, Command: "/permissions", Aliases: []string{"mode"}, Title: "Permission Mode", Menu: true, Public: true},
+	{ID: CommandPlan, Command: "/plan", Title: "Plan first, then edit", Public: true},
 	{ID: CommandContext, Command: "/context", Title: "Context", Menu: true, Public: true},
 	{ID: CommandUsage, Command: "/usage", Title: "Token usage", Public: true},
 	{ID: CommandContinue, Command: "/continue", Title: "Continue the last run", Public: true},

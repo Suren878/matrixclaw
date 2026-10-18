@@ -1,8 +1,6 @@
 package builtins
 
 import (
-	"strings"
-
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/externalagents/claudecode"
 	"github.com/Suren878/matrixclaw/internal/externalagents/codexapp"
@@ -44,7 +42,7 @@ func BuildRegistry(modules setup.ModulesConfig) (*externalagents.Registry, []ext
 	factories := Factories()
 	runtimes := make([]externalagents.RuntimeAgent, 0, len(factories))
 	for _, factory := range factories {
-		runtimes = append(runtimes, factory.New(externalAgentConfig(modules.ExternalAgents, factory)))
+		runtimes = append(runtimes, factory.New(modules.ExternalAgents[factory.ID]))
 	}
 	registry, _ := externalagents.NewRegistry()
 	for i, runtime := range runtimes {
@@ -54,18 +52,6 @@ func BuildRegistry(modules setup.ModulesConfig) (*externalagents.Registry, []ext
 		}
 	}
 	return registry, runtimes, nil
-}
-
-func externalAgentConfig(configs map[string]setup.ExternalAgentConfig, factory Factory) setup.ExternalAgentConfig {
-	if len(configs) == 0 {
-		return setup.ExternalAgentConfig{}
-	}
-	for _, id := range append([]string{factory.ID}, factory.Aliases...) {
-		if cfg, ok := configs[strings.ToLower(strings.TrimSpace(id))]; ok {
-			return cfg
-		}
-	}
-	return setup.ExternalAgentConfig{}
 }
 
 func closeRuntimes(runtimes []externalagents.RuntimeAgent) {

@@ -88,6 +88,8 @@ func permissionModeLine(mode string) string {
 		return "- Permission mode accept_edits: file writes and edits inside the working directory run without approval; bash and other changing calls still wait for the user."
 	case "full_auto":
 		return "- Permission mode full_auto: nothing waits for approval, so you alone guard against destructive or irreversible actions."
+	case "plan":
+		return "- Permission mode plan: every call that may change something is blocked. Explore with read-only tools, then call exit_plan_mode with your plan; once the user approves it, edits are allowed and you carry it out."
 	default:
 		return ""
 	}

@@ -79,7 +79,7 @@ func TestContinueNeedsAnEarlierRun(t *testing.T) {
 	defer cleanup()
 	app.WithRunStarter(&recordingRunStarter{})
 	now := runRecoveryTestTime()
-	session := core.Session{ID: "session_empty", Title: "empty", Kind: core.SessionKindAssistant, RuntimeID: core.SessionRuntimeMatrixClaw, Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now}
+	session := core.Session{ID: "session_empty", Title: "empty", Kind: core.SessionKindAssistant, Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now}
 	if err := db.CreateSession(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}

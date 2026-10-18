@@ -115,7 +115,7 @@ func TestHookTimeoutIsAWarning(t *testing.T) {
 func TestHooksGetTheSessionEnvironment(t *testing.T) {
 	scope := testScope(t)
 	runner, _ := testRunner(t, Config{Hooks: []Hook{{Event: PostToolUse, Command: `echo "$MATRIXCLAW_SESSION_ID $MATRIXCLAW_TOOL $MATRIXCLAW_FILE $CLAUDE_PROJECT_DIR $(pwd)"`}}})
-	told := runner.PostToolUse(context.Background(), scope, ToolCall{Name: "read", Input: json.RawMessage(`{}`), File: "/src/a.txt"}, ToolResponse{Content: "text", Status: "success"})
+	told := runner.PostToolUse(context.Background(), scope, ToolCall{Name: "read", Input: json.RawMessage(`{}`), Files: []string{"/src/a.txt"}}, ToolResponse{Content: "text", Status: "success"})
 	want := fmt.Sprintf("session_1 read /src/a.txt %s %s", scope.WorkingDir, scope.WorkingDir)
 	if !strings.Contains(told, want) {
 		t.Fatalf("told = %q, want it to hold %q", told, want)
@@ -256,7 +256,7 @@ func goModule(t *testing.T) string {
 }
 
 func editCall(file string) ToolCall {
-	return ToolCall{Name: "edit", Input: json.RawMessage(`{}`), File: file}
+	return ToolCall{Name: "edit", Input: json.RawMessage(`{}`), Files: []string{file}}
 }
 
 func TestDiagnosticsReportErrorsInTheEditedGoFile(t *testing.T) {
@@ -322,8 +322,24 @@ func TestDiagnosticsParseJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner, _ := testRunner(t, Config{})
-	told := runner.PostToolUse(context.Background(), testScope(t), ToolCall{Name: "write", File: file}, ToolResponse{Status: "success"})
+	told := runner.PostToolUse(context.Background(), testScope(t), ToolCall{Name: "write", Files: []string{file}}, ToolResponse{Status: "success"})
 	if !strings.Contains(told, file+":3:1: invalid character '}'") {
+		t.Fatalf("told = %q", told)
+	}
+}
+
+func TestDiagnosticsCheckEveryFileAPatchChanged(t *testing.T) {
+	dir := t.TempDir()
+	good, bad := filepath.Join(dir, "good.json"), filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(good, []byte(`{"a": 1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bad, []byte(`{"a": }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner, _ := testRunner(t, Config{})
+	told := runner.PostToolUse(context.Background(), testScope(t), ToolCall{Name: "apply_patch", Files: []string{good, bad}}, ToolResponse{Status: "success"})
+	if !strings.Contains(told, bad+":1:7:") || strings.Contains(told, good) {
 		t.Fatalf("told = %q", told)
 	}
 }

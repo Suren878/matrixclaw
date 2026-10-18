@@ -9,20 +9,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
 
 func TestClientSubscribeTurnRoutesInterleavedEvents(t *testing.T) {
-	client := newRoutingClientForTest(t)
+	client := newRoutingClientForTest()
+	turn1 := client.SubscribeTurn("thread-1", "turn-1")
+	defer turn1.Close()
+	turn2 := client.SubscribeTurn("thread-1", "turn-2")
+	defer turn2.Close()
 
-	turn1, unsubscribe1 := client.SubscribeTurn(context.Background(), "thread-1", "turn-1")
-	defer unsubscribe1()
-	turn2, unsubscribe2 := client.SubscribeTurn(context.Background(), "thread-1", "turn-2")
-	defer unsubscribe2()
-	waitForSubscriptions(t, client, turnKey{threadID: "thread-1", turnID: "turn-1"}, turnKey{threadID: "thread-1", turnID: "turn-2"})
-
-	client.events <- turnDeltaNotification(turnKey{threadID: "thread-1", turnID: "turn-2"}, "two")
-	client.events <- turnDeltaNotification(turnKey{threadID: "thread-1", turnID: "turn-1"}, "one")
+	client.route(turnDeltaNotification(turnKey{threadID: "thread-1", turnID: "turn-2"}, "two"))
+	client.route(turnDeltaNotification(turnKey{threadID: "thread-1", turnID: "turn-1"}, "one"))
 
 	got2 := receiveNotification(t, turn2)
 	if params, ok := got2.Params.(AgentMessageDelta); !ok || params.TurnID != "turn-2" || params.Delta != "two" {
@@ -36,145 +34,132 @@ func TestClientSubscribeTurnRoutesInterleavedEvents(t *testing.T) {
 	assertNoNotification(t, turn2)
 }
 
-func TestClientSubscribeTurnReplaysBacklogBeyondSubscriptionBuffer(t *testing.T) {
-	client := newRoutingClientForTest(t)
-	key := turnKey{threadID: "thread-1", turnID: "turn-1"}
-	backlogCount := turnSubscriptionBuffer + 1
-
-	for i := range backlogCount {
-		client.events <- turnDeltaNotification(key, fmt.Sprintf("early-%03d", i))
-	}
-	client.events <- Notification{
-		Method: "turn/completed",
-		Params: TurnCompleted{
-			ThreadID: key.threadID,
-			Turn:     Turn{ID: key.turnID, Status: TurnStatusCompleted},
-		},
-	}
-	waitForBacklogAtMost(t, client, key, 2)
-
-	turn, unsubscribe := client.SubscribeTurn(context.Background(), key.threadID, key.turnID)
-	defer unsubscribe()
-
-	var gotText strings.Builder
-	for {
-		got := receiveNotification(t, turn)
-		switch params := got.Params.(type) {
-		case AgentMessageDelta:
-			gotText.WriteString(params.Delta)
-		case TurnCompleted:
-			var want strings.Builder
-			for i := range backlogCount {
-				_, _ = fmt.Fprintf(&want, "early-%03d", i)
-			}
-			if gotText.String() != want.String() {
-				t.Fatalf("combined backlog delta = %q, want %q", gotText.String(), want.String())
-			}
-			assertNoNotification(t, turn)
-			return
+func TestClientSubscribeTurnReplaysBacklogAndCoalescesBursts(t *testing.T) {
+	for _, subscribeFirst := range []bool{false, true} {
+		client := newRoutingClientForTest()
+		key := turnKey{threadID: "thread-1", turnID: "turn-1"}
+		var turn *TurnSubscription
+		if subscribeFirst {
+			turn = client.SubscribeTurn(key.threadID, key.turnID)
 		}
-	}
-}
-
-func TestClientSlowTurnSubscriberKeepsAllTextAndTerminalEvent(t *testing.T) {
-	client := newRoutingClientForTest(t)
-	key := turnKey{threadID: "thread-1", turnID: "turn-1"}
-	turn, unsubscribe := client.SubscribeTurn(context.Background(), key.threadID, key.turnID)
-	defer unsubscribe()
-	waitForSubscriptions(t, client, key)
-
-	const deltaCount = 2048
-	for i := 0; i < deltaCount; i++ {
-		client.events <- turnDeltaNotification(key, "x")
-	}
-	client.events <- Notification{
-		Method: "turn/completed",
-		Params: TurnCompleted{
-			ThreadID: key.threadID,
-			Turn:     Turn{ID: key.turnID, Status: TurnStatusCompleted},
-		},
-	}
-
-	var text strings.Builder
-	terminal := false
-	deadline := time.After(2 * time.Second)
-	for !terminal {
-		select {
-		case notification, ok := <-turn:
-			if !ok {
-				t.Fatalf("subscription closed before terminal event; text bytes = %d", text.Len())
-			}
-			switch params := notification.Params.(type) {
+		const deltaCount = 2048
+		var want strings.Builder
+		for i := range deltaCount {
+			delta := fmt.Sprintf("d%04d", i)
+			want.WriteString(delta)
+			client.route(turnDeltaNotification(key, delta))
+		}
+		client.route(Notification{Method: "turn/completed", Params: TurnCompleted{ThreadID: key.threadID, Turn: Turn{ID: key.turnID, Status: TurnStatusCompleted}}})
+		if !subscribeFirst {
+			turn = client.SubscribeTurn(key.threadID, key.turnID)
+		}
+		var text strings.Builder
+		for terminal := false; !terminal; {
+			switch params := receiveNotification(t, turn).Params.(type) {
 			case AgentMessageDelta:
 				text.WriteString(params.Delta)
 			case TurnCompleted:
 				terminal = true
 			}
-		case <-deadline:
-			t.Fatalf("timed out waiting for terminal event; text bytes = %d", text.Len())
 		}
-	}
-	if got := text.Len(); got != deltaCount {
-		t.Fatalf("combined delta bytes = %d, want %d", got, deltaCount)
-	}
-	if err := client.Err(); err != nil {
-		t.Fatalf("client error after burst = %v", err)
+		if text.String() != want.String() {
+			t.Fatalf("subscribe first %t: combined delta = %d bytes, want %d", subscribeFirst, text.Len(), want.Len())
+		}
+		assertNoNotification(t, turn)
+		turn.Close()
 	}
 }
 
-func TestClientBacklogCoalescesBurstWithoutLosingTerminalEvent(t *testing.T) {
-	client := newRoutingClientForTest(t)
-	key := turnKey{threadID: "thread-1", turnID: "turn-1"}
+func TestClientDropsBacklogOfTurnsNobodySubscribed(t *testing.T) {
+	client := newRoutingClientForTest()
+	now := time.Now()
+	client.now = func() time.Time { return now }
+	finished := turnKey{threadID: "thread-1", turnID: "finished"}
+	client.route(turnDeltaNotification(finished, "late"))
+	client.route(Notification{Method: "turn/completed", Params: TurnCompleted{ThreadID: finished.threadID, Turn: Turn{ID: finished.turnID}}})
 
-	const deltaCount = 2048
-	for i := 0; i < deltaCount; i++ {
-		client.events <- turnDeltaNotification(key, "x")
-	}
-	client.events <- Notification{
-		Method: "turn/completed",
-		Params: TurnCompleted{
-			ThreadID: key.threadID,
-			Turn:     Turn{ID: key.turnID, Status: TurnStatusCompleted},
-		},
-	}
-	waitForBacklogAtMost(t, client, key, turnBacklogLimit+1)
+	now = now.Add(turnBacklogTTL + time.Second)
+	client.route(turnDeltaNotification(turnKey{threadID: "thread-1", turnID: "next"}, "x"))
 
-	turn, unsubscribe := client.SubscribeTurn(context.Background(), key.threadID, key.turnID)
-	defer unsubscribe()
-	var text strings.Builder
-	for {
-		notification := receiveNotification(t, turn)
-		switch params := notification.Params.(type) {
-		case AgentMessageDelta:
-			text.WriteString(params.Delta)
-		case TurnCompleted:
-			if got := text.Len(); got != deltaCount {
-				t.Fatalf("combined backlog delta bytes = %d, want %d", got, deltaCount)
-			}
-			return
-		}
+	client.routeMu.Lock()
+	_, kept := client.turnBacklog[finished]
+	backlogs := len(client.turnBacklog)
+	client.routeMu.Unlock()
+	if kept || backlogs != 1 {
+		t.Fatalf("backlog kept finished turn = %t, backlogs = %d; want only the new turn", kept, backlogs)
 	}
 }
 
-func newRoutingClientForTest(t *testing.T) *Client {
-	t.Helper()
-	client := &Client{
-		events:      make(chan Notification, turnBacklogLimit+16),
-		done:        make(chan struct{}),
-		turnSubs:    map[turnKey]map[*turnSubscription]struct{}{},
-		turnBacklog: map[turnKey][]Notification{},
-		routeDone:   make(chan struct{}),
-	}
-	safego.Go("codexapp.testEventRouter", client.routeEvents)
+func TestClientWriteToStalledServerFailsInTime(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	client := NewClient(clientConn)
 	t.Cleanup(func() {
-		close(client.events)
-		select {
-		case <-client.routeDone:
-		case <-time.After(time.Second):
-			t.Fatalf("event router did not stop")
-		}
+		_ = client.Close()
+		_ = serverConn.Close()
 	})
-	return client
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if err := client.Notify(ctx, "initialized", nil); err == nil {
+		t.Fatal("Notify() to a server that never reads succeeded")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("Notify() took %v, want about the context deadline", elapsed)
+	}
+	if client.Err() == nil {
+		t.Fatal("a failed write left the connection usable")
+	}
+}
+
+func TestRuntimeFailsTurnWhoseEndCannotBeDecoded(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	client := NewClient(clientConn)
+	runtime := NewRuntime(RuntimeOptions{Enabled: true, Client: client})
+	t.Cleanup(func() {
+		_ = runtime.Close()
+		_ = client.Close()
+		_ = serverConn.Close()
+	})
+	go func() {
+		decoder := json.NewDecoder(serverConn)
+		for {
+			var request map[string]json.RawMessage
+			if decoder.Decode(&request) != nil {
+				return
+			}
+			id := string(request["id"])
+			switch string(request["method"]) {
+			case `"initialize"`:
+				_, _ = serverConn.Write([]byte(`{"id":` + id + `,"result":{}}` + "\n"))
+			case `"turn/start"`:
+				_, _ = serverConn.Write([]byte(`{"id":` + id + `,"result":{"turn":{"id":"turn-1"}}}` + "\n"))
+				_, _ = serverConn.Write([]byte(`{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":{"kind":"completed"}}}}` + "\n"))
+			}
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	events, err := runtime.Send(ctx, externalagents.ExternalSession{ExternalThreadID: "thread-1"}, externalagents.Input{Text: "hi"})
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	var last externalagents.Event
+	for event := range events {
+		last = event
+	}
+	if last.Kind != externalagents.EventTurnFailed || !strings.Contains(last.Error, "turn/completed") {
+		t.Fatalf("last event = %#v, want a failed turn naming turn/completed", last)
+	}
+}
+
+func newRoutingClientForTest() *Client {
+	return &Client{
+		done:        make(chan struct{}),
+		turnSubs:    map[turnKey]*TurnSubscription{},
+		turnBacklog: map[turnKey]*turnBacklog{},
+		now:         time.Now,
+	}
 }
 
 func turnDeltaNotification(key turnKey, delta string) Notification {
@@ -189,79 +174,23 @@ func turnDeltaNotification(key turnKey, delta string) Notification {
 	}
 }
 
-func receiveNotification(t *testing.T, ch <-chan Notification) Notification {
+func receiveNotification(t *testing.T, sub *TurnSubscription) Notification {
 	t.Helper()
-	select {
-	case notification, ok := <-ch:
-		if !ok {
-			t.Fatalf("subscription closed before notification")
-		}
-		return notification
-	case <-time.After(time.Second):
-		t.Fatalf("timed out waiting for notification")
-		return Notification{}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	notification, ok := sub.Next(ctx)
+	if !ok {
+		t.Fatalf("no notification")
 	}
+	return notification
 }
 
-func assertNoNotification(t *testing.T, ch <-chan Notification) {
+func assertNoNotification(t *testing.T, sub *TurnSubscription) {
 	t.Helper()
-	select {
-	case notification, ok := <-ch:
-		t.Fatalf("unexpected notification %#v, ok=%v", notification, ok)
-	case <-time.After(25 * time.Millisecond):
-	}
-}
-
-func waitForSubscriptions(t *testing.T, client *Client, keys ...turnKey) {
-	t.Helper()
-	deadline := time.After(time.Second)
-	ticker := time.NewTicker(time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if hasSubscriptions(client, keys...) {
-			return
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("subscriptions were not registered")
-		case <-ticker.C:
-		}
-	}
-}
-
-func hasSubscriptions(client *Client, keys ...turnKey) bool {
-	client.routeMu.Lock()
-	defer client.routeMu.Unlock()
-	for _, key := range keys {
-		if len(client.turnSubs[key]) == 0 {
-			return false
-		}
-	}
-	return true
-}
-
-func waitForBacklogAtMost(t *testing.T, client *Client, key turnKey, max int) {
-	t.Helper()
-	deadline := time.After(2 * time.Second)
-	ticker := time.NewTicker(time.Millisecond)
-	defer ticker.Stop()
-	for {
-		client.routeMu.Lock()
-		backlog := client.turnBacklog[key]
-		got := len(backlog)
-		terminal := got > 0 && backlog[got-1].Method == "turn/completed"
-		client.routeMu.Unlock()
-		if terminal {
-			if got > max {
-				t.Fatalf("backlog size = %d, want at most %d", got, max)
-			}
-			return
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("backlog did not receive terminal event; size = %d", got)
-		case <-ticker.C:
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	if notification, ok := sub.Next(ctx); ok {
+		t.Fatalf("unexpected notification %#v", notification)
 	}
 }
 

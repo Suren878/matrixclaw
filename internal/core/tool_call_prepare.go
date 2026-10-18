@@ -61,7 +61,7 @@ func (c *Core) checkToolCall(ctx context.Context, toolName string, call tools.Ca
 		call.WorkingDir = session.WorkingDir
 	}
 	if task.Isolation == SubagentIsolationWorktree && task.WorkingDir != "" {
-		if err := tools.CheckConfinedCall(spec, call, c.tools.Subject(spec.ID, call), task.WorkingDir); err != nil {
+		if err := tools.CheckConfinedCall(spec, call, c.tools.Subjects(spec.ID, call), !c.tools.ReadsOnly(spec.ID, call), task.WorkingDir); err != nil {
 			return Session{}, tools.Spec{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 		}
 	}

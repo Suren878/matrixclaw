@@ -13,8 +13,8 @@ import (
 const maxLedgerSessions = 256
 
 // fileLedger remembers which version of each file a session has read or
-// written, so write, edit and multiedit refuse an existing file the session
-// has not seen or that changed since. It lives in memory: after a daemon
+// written, so the file-changing tools refuse an existing file the session has
+// not seen or that changed since. It lives in memory: after a daemon
 // restart a file is read again before it is changed. Calls without a session
 // (none in runs) are not checked.
 type fileLedger struct {

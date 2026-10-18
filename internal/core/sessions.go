@@ -7,14 +7,15 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
 
 // KindAndMode is the kind and permission mode of the session the input
 // creates; an external agent runs full_auto unless a mode is given.
 func (input CreateSessionInput) KindAndMode() (SessionKind, PermissionMode) {
-	kind := sessionKindForRuntime(sessionRuntimeForCreate(input.RuntimeID, input.Kind, input.ExternalAgentID))
+	kind := SessionKindAssistant
+	if input.Kind == SessionKindExternalAgent || strings.TrimSpace(input.ExternalAgentID) != "" {
+		kind = SessionKindExternalAgent
+	}
 	if kind == SessionKindExternalAgent && strings.TrimSpace(string(input.PermissionMode)) == "" {
 		return kind, PermissionModeFullAuto
 	}
@@ -27,7 +28,14 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 	if title == "" {
 		return Session{}, fmt.Errorf("%w: session title is required", ErrInvalidInput)
 	}
-	runtimeID := sessionRuntimeForCreate(input.RuntimeID, input.Kind, input.ExternalAgentID)
+	switch input.Kind {
+	case "", SessionKindAssistant, SessionKindExternalAgent:
+	default:
+		return Session{}, fmt.Errorf("%w: unknown session kind %q", ErrInvalidInput, input.Kind)
+	}
+	if input.Kind == SessionKindAssistant && strings.TrimSpace(input.ExternalAgentID) != "" {
+		return Session{}, fmt.Errorf("%w: an assistant session has no external agent", ErrInvalidInput)
+	}
 	kind, permissionMode := input.KindAndMode()
 	workingDir := normalizeWorkingDir(input.WorkingDir)
 	providerID := strings.TrimSpace(input.ProviderID)
@@ -54,7 +62,6 @@ func (c *Core) CreateSession(ctx context.Context, input CreateSessionInput) (Ses
 		ID:              c.newID("session"),
 		Title:           title,
 		Kind:            kind,
-		RuntimeID:       runtimeID,
 		ParentSessionID: strings.TrimSpace(input.ParentSessionID),
 		Hidden:          input.Hidden,
 		WorkingDir:      workingDir,
@@ -136,23 +143,6 @@ func (c *Core) UpdateSessionPermissionMode(ctx context.Context, input UpdateSess
 	session.UpdatedAt = c.now().UTC()
 	if err := c.store.UpdateSession(ctx, session); err != nil {
 		return Session{}, err
-	}
-	if session.Kind == SessionKindExternalAgent && c.externalStore != nil {
-		if attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID); err == nil {
-			readonly, err := c.readonlySubagent(ctx, session.ID)
-			if err != nil {
-				return Session{}, err
-			}
-			approvalPolicy, sandbox := externalAgentPolicy(session.PermissionMode, readonly)
-			attachment.ApprovalPolicy = approvalPolicy
-			attachment.Sandbox = sandbox
-			attachment.UpdatedAt = session.UpdatedAt
-			if err := c.externalStore.SaveExternalAgentSession(ctx, attachment); err != nil {
-				return Session{}, err
-			}
-		} else if !errors.Is(err, ErrNotFound) {
-			return Session{}, err
-		}
 	}
 	return c.decorateSession(ctx, session), nil
 }
@@ -358,8 +348,7 @@ func (c *Core) ModelsForSession(ctx context.Context, sessionID string) (string, 
 }
 
 func CoreSessionIsExternalAgent(session Session) bool {
-	return NormalizeSessionRuntime(session.RuntimeID) == SessionRuntimeExternalAgent ||
-		NormalizeSessionKind(session.Kind) == SessionKindExternalAgent
+	return session.Kind == SessionKindExternalAgent
 }
 
 func (c *Core) externalAgentModels(ctx context.Context, session Session) []string {
@@ -385,11 +374,7 @@ func (c *Core) externalAgentModelList(ctx context.Context, agentID string) []str
 	if !ok {
 		return nil
 	}
-	provider, ok := agent.(externalagents.ModelProvider)
-	if !ok {
-		return nil
-	}
-	return provider.Models(ctx)
+	return agent.Models(ctx)
 }
 
 func (c *Core) externalAgentDefaultModel(ctx context.Context, agentID string) string {
@@ -437,14 +422,6 @@ func (c *Core) decorateSession(ctx context.Context, session Session) Session {
 }
 
 func (c *Core) decorateSessionLLM(session Session) Session {
-	session.Kind = NormalizeSessionKind(session.Kind)
-	if session.Kind == SessionKindExternalAgent && (session.RuntimeID == "" || NormalizeSessionRuntime(session.RuntimeID) == SessionRuntimeMatrixClaw) {
-		session.RuntimeID = SessionRuntimeExternalAgent
-	}
-	if session.RuntimeID == "" {
-		session.RuntimeID = SessionRuntimeMatrixClaw
-	}
-	session.RuntimeID = NormalizeSessionRuntime(session.RuntimeID)
 	session.PermissionMode = NormalizePermissionMode(string(session.PermissionMode))
 	if session.Kind == SessionKindExternalAgent {
 		return session

@@ -8,10 +8,21 @@ import (
 	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
-const permissionsUsage = "Usage: /permissions default|accept_edits|full_auto, /permissions add allow|ask|deny <tool> [pattern] [global], /permissions delete <rule id>. " +
+const permissionsUsage = "Usage: /permissions default|accept_edits|full_auto|plan, /permissions add allow|ask|deny <tool> [pattern] [global], /permissions delete <rule id>. " +
 	"Deny rules match commands, not the code an interpreter runs (python -c, node -e, awk, sed e, make and npm scripts, test runners): " +
 	"allowing such a command allows any code, and a test runner or build (bash: go test:*, npm test:*, make:*) runs code the agent may edit first under accept_edits. " +
 	"web_fetch rules cover every URL web_fetch fetches, redirects included; MCP browser tools follow mcp rules only."
+
+const planUsage = "Usage: /plan switches this session to plan mode: the agent explores with read-only tools and asks you to approve its plan; " +
+	"approving switches the session to accept_edits and the agent carries the plan out. Describe the task in your next message."
+
+// handlePlan switches the session to plan mode, as /permissions plan does.
+func (d *Dispatcher) handlePlan(ctx context.Context, args string) (Result, error) {
+	if args != "" {
+		return Result{Handled: true, Text: planUsage}, nil
+	}
+	return d.handlePermissions(ctx, string(core.PermissionModePlan))
+}
 
 func (d *Dispatcher) handlePermissions(ctx context.Context, args string) (Result, error) {
 	_, session, err := d.currentSession(ctx)
@@ -155,6 +166,7 @@ func permissionModeItems(current core.PermissionMode) []PickerItem {
 		{mode: core.PermissionModeDefault, title: "Ask First"},
 		{mode: core.PermissionModeAcceptEdits, title: "Edits Only"},
 		{mode: core.PermissionModeFullAuto, title: "Full Auto"},
+		{mode: core.PermissionModePlan, title: "Plan"},
 	}
 	items := make([]PickerItem, 0, len(modes))
 	for _, mode := range modes {
@@ -177,6 +189,8 @@ func parsePermissionMode(value string) (core.PermissionMode, bool) {
 		return core.PermissionModeAcceptEdits, true
 	case "full_auto", "full_access", "full", "auto", "access":
 		return core.PermissionModeFullAuto, true
+	case "plan":
+		return core.PermissionModePlan, true
 	default:
 		return core.PermissionModeDefault, false
 	}

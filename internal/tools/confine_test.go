@@ -19,7 +19,9 @@ func TestCheckConfinedCallKeepsWorkInsideTheRoot(t *testing.T) {
 		args, _ := json.Marshal(BashParams{Command: command, WorkingDir: dir})
 		return Call{WorkingDir: filepath.Join(root, "pkg"), Args: args}
 	}
-	file := func(path string) permission.Subject { return permission.Subject{Kind: permission.KindFile, Value: path} }
+	file := func(path string) permission.Subject {
+		return permission.Subject{Kind: permission.KindFile, Value: path}
+	}
 	for _, tc := range []struct {
 		name    string
 		spec    Spec
@@ -37,7 +39,7 @@ func TestCheckConfinedCallKeepsWorkInsideTheRoot(t *testing.T) {
 		{"read outside", read, Call{WorkingDir: root}, file(filepath.Join(outside, "a.go")), true},
 		{"call outside", read, Call{WorkingDir: outside}, permission.Subject{}, false},
 	} {
-		err := CheckConfinedCall(tc.spec, tc.call, tc.subject, root)
+		err := CheckConfinedCall(tc.spec, tc.call, []permission.Subject{tc.subject}, tc.spec.Mutates(), root)
 		if (err == nil) != tc.ok {
 			t.Errorf("%s: err = %v, want ok %v", tc.name, err, tc.ok)
 		}

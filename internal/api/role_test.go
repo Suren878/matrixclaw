@@ -87,6 +87,20 @@ func TestRulesByRole(t *testing.T) {
 	if got := serveAs(server, core.RoleOwner, "DELETE", "/v1/permission-rules/"+added.Rule.ID, ""); got.Code != http.StatusNoContent {
 		t.Fatalf("owner deletes a global rule: status %d, want 204", got.Code)
 	}
+
+	session := serveAs(server, core.RoleMember, "POST", "/v1/sessions/s1/permission-rules", rule("session"))
+	if err := json.Unmarshal(session.Body.Bytes(), &added); err != nil {
+		t.Fatal(err)
+	}
+	if got := serveAs(server, core.RoleOwner, "PATCH", "/v1/sessions/s1/permissions", `{"permission_mode":"full_auto"}`); got.Code != http.StatusOK {
+		t.Fatalf("full_auto: status %d", got.Code)
+	}
+	if got := serveAs(server, core.RoleMember, "DELETE", "/v1/permission-rules/"+added.Rule.ID, ""); got.Code != http.StatusForbidden {
+		t.Fatalf("member deletes a rule of a full_auto session: status %d, want 403", got.Code)
+	}
+	if got := serveAs(server, core.RoleOwner, "DELETE", "/v1/permission-rules/"+added.Rule.ID, ""); got.Code != http.StatusNoContent {
+		t.Fatalf("owner deletes a session rule: status %d, want 204", got.Code)
+	}
 }
 
 func TestOnlyTheOwnerReachesAnUnattendedSession(t *testing.T) {
@@ -108,7 +122,7 @@ func TestOnlyTheOwnerCreatesASessionWithAPermissionMode(t *testing.T) {
 	if got := serveAs(server, core.RoleMember, "POST", "/v1/sessions", `{"title":"x","external_agent_id":"codex"}`); got.Code != http.StatusForbidden {
 		t.Fatalf("member external agent session: status %d %s, want 403", got.Code, got.Body.String())
 	}
-	if got := serveAs(server, core.RoleGuest, "POST", "/v1/sessions", `{"title":"x","runtime_id":"external_agent"}`); got.Code != http.StatusForbidden {
+	if got := serveAs(server, core.RoleGuest, "POST", "/v1/sessions", `{"title":"x","kind":"external_agent"}`); got.Code != http.StatusForbidden {
 		t.Fatalf("guest external agent session: status %d %s, want 403", got.Code, got.Body.String())
 	}
 	if got := serveAs(server, core.RoleMember, "POST", "/v1/sessions", `{"title":"x"}`); got.Code != http.StatusCreated {

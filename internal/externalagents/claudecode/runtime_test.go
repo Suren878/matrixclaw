@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/permission"
 )
 
 func TestRunPromptStreamsPartialClaudeOutput(t *testing.T) {
@@ -70,28 +71,26 @@ func TestRunPromptPanicEmitsTurnFailedAndCloses(t *testing.T) {
 	}
 }
 
-func TestClaudePromptArgsUsesStreamingAndRootCompatibleAutoMode(t *testing.T) {
-	session := externalagents.ExternalSession{
-		Model:          "sonnet",
-		ApprovalPolicy: "never",
-		Sandbox:        "danger-full-access",
-	}
-	args := claudePromptArgs(session, "hello")
-	joined := strings.Join(args, " ")
-	for _, want := range []string{"--output-format stream-json", "--include-partial-messages", "--permission-mode auto"} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("args = %q, want %q", joined, want)
+func TestClaudePromptArgsMapPermissions(t *testing.T) {
+	for _, tc := range []struct {
+		permissions externalagents.Permissions
+		want        string
+	}{
+		{externalagents.Permissions{Mode: permission.ModeFullAuto}, "auto"},
+		{externalagents.Permissions{Mode: permission.ModeAcceptEdits}, "acceptEdits"},
+		{externalagents.Permissions{Mode: permission.ModeDefault}, "default"},
+		{externalagents.Permissions{Mode: permission.ModeFullAuto, Readonly: true}, "dontAsk"},
+	} {
+		session := externalagents.ExternalSession{Model: "sonnet", Permissions: tc.permissions}
+		joined := strings.Join(claudePromptArgs(session, "hello"), " ")
+		for _, want := range []string{"--output-format stream-json", "--include-partial-messages", "--permission-mode " + tc.want + " "} {
+			if !strings.Contains(joined, want) {
+				t.Fatalf("%+v: args = %q, want %q", tc.permissions, joined, want)
+			}
 		}
-	}
-	if strings.Contains(joined, "bypassPermissions") || strings.Contains(joined, "dangerously-skip-permissions") {
-		t.Fatalf("args = %q, must not use root-forbidden bypass mode", joined)
-	}
-}
-
-func TestReadOnlyClaudeSessionIsDeniedEveryChangeWithoutAsking(t *testing.T) {
-	session := externalagents.ExternalSession{ApprovalPolicy: "never", Sandbox: "read-only"}
-	if joined := strings.Join(claudePromptArgs(session, "hello"), " "); !strings.Contains(joined, "--permission-mode dontAsk") {
-		t.Fatalf("args = %q, want dontAsk", joined)
+		if strings.Contains(joined, "bypassPermissions") || strings.Contains(joined, "dangerously-skip-permissions") {
+			t.Fatalf("args = %q, must not use root-forbidden bypass mode", joined)
+		}
 	}
 }
 

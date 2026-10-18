@@ -27,8 +27,8 @@ final class ModelDecodingTests: XCTestCase {
     }
 
     func testExternalAgentSessionDecodes() throws {
-        let session = try decode(Session.self, #"{"id":"s1","title":"Codex","kind":"external_agent","runtime_id":"external_agent","permission_mode":"full_auto","status":"active","created_at":"2026-10-04T10:00:00Z","updated_at":"2026-10-04T10:00:00Z"}"#)
-        XCTAssertEqual(session.runtimeId, .externalAgent)
+        let session = try decode(Session.self, #"{"id":"s1","title":"Codex","kind":"external_agent","permission_mode":"full_auto","status":"active","created_at":"2026-10-04T10:00:00Z","updated_at":"2026-10-04T10:00:00Z"}"#)
+        XCTAssertEqual(session.kind, .externalAgent)
         XCTAssertEqual(session.permissionMode, .fullAuto)
     }
 

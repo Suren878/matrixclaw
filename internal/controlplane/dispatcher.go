@@ -51,6 +51,8 @@ func (d *Dispatcher) Handle(ctx context.Context, text string) (Result, error) {
 		return d.handleProvider(ctx, args)
 	case CommandPermissions:
 		return d.handlePermissions(ctx, args)
+	case CommandPlan:
+		return d.handlePlan(ctx, args)
 	case CommandApproval:
 		return d.handleApproval(ctx, args)
 	case CommandContext:

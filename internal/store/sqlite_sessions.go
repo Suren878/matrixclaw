@@ -12,11 +12,10 @@ import (
 func (s *SQLiteStore) CreateSession(ctx context.Context, session core.Session) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO sessions(`+sessionColumns+`)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		session.ID,
 		session.Title,
-		string(core.NormalizeSessionKind(session.Kind)),
-		string(core.NormalizeSessionRuntime(session.RuntimeID)),
+		string(session.Kind),
 		session.ParentSessionID,
 		boolInt(session.Hidden),
 		session.WorkingDir,
@@ -63,17 +62,16 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, filter core.SessionListF
 	return queryAll(ctx, s.db, "sessions", scanSession, query, args...)
 }
 
-const sessionColumns = `id, title, kind, runtime_id, parent_session_id, hidden, working_dir, provider_id, model_id, permission_mode, status, created_at, updated_at`
+const sessionColumns = `id, title, kind, parent_session_id, hidden, working_dir, provider_id, model_id, permission_mode, status, created_at, updated_at`
 
 func scanSession(row rowScanner) (core.Session, error) {
 	var session core.Session
-	var kind, status, runtimeID, permissionMode, createdAt, updatedAt string
+	var kind, status, permissionMode, createdAt, updatedAt string
 	var hidden int
-	if err := row.Scan(&session.ID, &session.Title, &kind, &runtimeID, &session.ParentSessionID, &hidden, &session.WorkingDir, &session.ProviderID, &session.ModelID, &permissionMode, &status, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&session.ID, &session.Title, &kind, &session.ParentSessionID, &hidden, &session.WorkingDir, &session.ProviderID, &session.ModelID, &permissionMode, &status, &createdAt, &updatedAt); err != nil {
 		return core.Session{}, err
 	}
-	session.Kind = core.NormalizeSessionKind(core.SessionKind(kind))
-	session.RuntimeID = core.NormalizeSessionRuntime(core.SessionRuntime(runtimeID))
+	session.Kind = core.SessionKind(kind)
 	session.Hidden = hidden != 0
 	session.Status = core.SessionStatus(status)
 	session.PermissionMode = core.NormalizePermissionMode(permissionMode)
@@ -85,11 +83,10 @@ func scanSession(row rowScanner) (core.Session, error) {
 func (s *SQLiteStore) UpdateSession(ctx context.Context, session core.Session) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE sessions
-SET title = ?, kind = ?, runtime_id = ?, parent_session_id = ?, hidden = ?, working_dir = ?, provider_id = ?, model_id = ?, permission_mode = ?, status = ?, updated_at = ?
+SET title = ?, kind = ?, parent_session_id = ?, hidden = ?, working_dir = ?, provider_id = ?, model_id = ?, permission_mode = ?, status = ?, updated_at = ?
 WHERE id = ?`,
 		session.Title,
-		string(core.NormalizeSessionKind(session.Kind)),
-		string(core.NormalizeSessionRuntime(session.RuntimeID)),
+		string(session.Kind),
 		session.ParentSessionID,
 		boolInt(session.Hidden),
 		session.WorkingDir,

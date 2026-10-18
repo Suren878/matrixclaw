@@ -10,7 +10,7 @@ func ToolUseDiscipline(tools Tools, subagent bool) string {
 		"- Treat requests to do work as instructions to carry the task through to a verified result. A promise, plan, or successful intermediate tool call is not completion.",
 		"- Tool calls you make in one reply run at the same time and may finish in any order; their results come back in the order you made them. Put independent reads, searches and inspections into one reply as parallel calls. A call that needs another call's result or effect goes in a later reply.",
 	}
-	if tools.Has("bash", "edit") {
+	if tools.Has("bash") && tools.Edits() {
 		lines = append(lines, backgroundLine(tools))
 	}
 	lines = append(lines, "- Inspect each tool result before deciding the next step. If a tool fails, use its error to correct the request or choose another approach; do not claim success or repeat the same failed call without a reason.")

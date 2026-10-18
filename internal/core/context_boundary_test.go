@@ -123,7 +123,7 @@ func TestCompactWithNothingToSummariseIsInvalidInput(t *testing.T) {
 	})})
 	now := runRecoveryTestTime()
 	session := core.Session{
-		ID: "session_notes", Title: "notes", Kind: core.SessionKindAssistant, RuntimeID: core.SessionRuntimeMatrixClaw,
+		ID: "session_notes", Title: "notes", Kind: core.SessionKindAssistant,
 		ProviderID: "recovery-test", ModelID: "test-model", PermissionMode: core.PermissionModeDefault,
 		Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now,
 	}

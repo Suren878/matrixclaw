@@ -26,14 +26,11 @@ type Descriptor struct {
 	Detail      string
 }
 
-// ModelProvider is implemented by agents that suggest models to pick from.
-type ModelProvider interface {
-	Models(ctx context.Context) []string
-}
-
 type RuntimeAgent interface {
 	ID() string
 	DisplayName() string
+	// Models are the models the agent suggests to pick from, default first.
+	Models(ctx context.Context) []string
 	Available(ctx context.Context) Availability
 	StartSession(ctx context.Context, req StartSessionRequest) (ExternalSession, error)
 	ResumeSession(ctx context.Context, session ExternalSession) (ExternalSession, error)
@@ -42,14 +39,19 @@ type RuntimeAgent interface {
 	Close() error
 }
 
+// Permissions are what the agent may do unasked; each adapter maps them to
+// its own terms.
+type Permissions struct {
+	// Mode is a permission mode (permission.ModeDefault, ...).
+	Mode string
+	// Readonly refuses every change without asking, whatever the mode.
+	Readonly bool
+}
+
 type StartSessionRequest struct {
-	CWD                   string
-	Model                 string
-	ApprovalPolicy        string
-	Sandbox               string
-	BaseInstructions      string
-	DeveloperInstructions string
-	Metadata              map[string]any
+	CWD         string
+	Model       string
+	Permissions Permissions
 }
 
 type ExternalSession struct {
@@ -58,9 +60,9 @@ type ExternalSession struct {
 	ExternalSessionID string
 	CWD               string
 	Model             string
-	ApprovalPolicy    string
-	Sandbox           string
-	Metadata          map[string]any
+	// Permissions are the session's now; core fills them before every turn.
+	Permissions Permissions
+	Metadata    map[string]any
 }
 
 type Input struct {
@@ -93,8 +95,6 @@ type Event struct {
 	ToolInput         string    `json:"tool_input,omitempty"`
 	Text              string    `json:"text,omitempty"`
 	Error             string    `json:"error,omitempty"`
-	RawMethod         string    `json:"raw_method,omitempty"`
-	Raw               []byte    `json:"raw,omitempty"`
 	At                time.Time `json:"at"`
 }
 
@@ -105,8 +105,6 @@ type SessionAttachment struct {
 	ExternalSessionID string
 	CWD               string
 	Model             string
-	ApprovalPolicy    string
-	Sandbox           string
 	MetadataJSON      string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
@@ -119,7 +117,5 @@ func (a SessionAttachment) ExternalSession() ExternalSession {
 		ExternalSessionID: a.ExternalSessionID,
 		CWD:               a.CWD,
 		Model:             a.Model,
-		ApprovalPolicy:    a.ApprovalPolicy,
-		Sandbox:           a.Sandbox,
 	}
 }

@@ -215,6 +215,11 @@ func decodePermissionParams(toolName string, raw json.RawMessage) any {
 		if err := json.Unmarshal(raw, &change); err == nil {
 			return change
 		}
+	case "apply_patch":
+		var change tools.PatchChange
+		if err := json.Unmarshal(raw, &change); err == nil {
+			return change
+		}
 	case "skill_manage":
 		var params tools.SkillManagePermissionsParams
 		if err := json.Unmarshal(raw, &params); err == nil {

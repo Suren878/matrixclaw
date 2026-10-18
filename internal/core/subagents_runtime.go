@@ -25,7 +25,6 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 		return c.CreateSession(ctx, CreateSessionInput{
 			Title:           title,
 			Kind:            SessionKindExternalAgent,
-			RuntimeID:       SessionRuntimeExternalAgent,
 			ParentSessionID: parent.ID,
 			Hidden:          true,
 			WorkingDir:      workingDir,
@@ -38,7 +37,6 @@ func (c *Core) createSubagentSession(ctx context.Context, parent Session, runtim
 		return c.CreateSession(ctx, CreateSessionInput{
 			Title:           title,
 			Kind:            SessionKindAssistant,
-			RuntimeID:       SessionRuntimeMatrixClaw,
 			ParentSessionID: parent.ID,
 			Hidden:          true,
 			WorkingDir:      workingDir,

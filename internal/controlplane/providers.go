@@ -19,7 +19,7 @@ func (d *Dispatcher) handleProvider(ctx context.Context, args string) (Result, e
 	if session == nil {
 		return Result{Handled: true, Text: "No active session. Use /new or /sessions."}, nil
 	}
-	if core.NormalizeSessionRuntime(session.RuntimeID) != core.SessionRuntimeMatrixClaw {
+	if core.CoreSessionIsExternalAgent(*session) {
 		return Result{Handled: true, Text: "This session uses " + sessionRuntimeLabel(*session) + ". Provider selection is available for MatrixClaw sessions only."}, nil
 	}
 	value := strings.TrimSpace(args)
