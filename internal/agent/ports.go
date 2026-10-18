@@ -201,3 +201,12 @@ type Prompts interface {
 	System(ctx context.Context, history []transcript.Message) (system, custom string)
 	Context(ctx context.Context) string
 }
+
+// Hooks runs the user's hooks at the engine's seams. SessionStart returns
+// context for the model, Stop why a run that would end must go on ("" lets it
+// end; active says a Stop hook already kept it going), PreCompact only observes.
+type Hooks interface {
+	SessionStart(ctx context.Context, source string) string
+	Stop(ctx context.Context, reply string, active bool) string
+	PreCompact(ctx context.Context, trigger string)
+}

@@ -23,6 +23,8 @@ type Config struct {
 	Sink        Sink
 	Prompts     Prompts
 	Todos       Todos
+	// Hooks runs the user's hooks; nil runs none.
+	Hooks       Hooks
 	Attachments agentcontext.AttachmentReader
 	Now         func() time.Time
 	NewID       func(prefix string) string
@@ -92,6 +94,12 @@ func (e *Engine) Run(ctx context.Context, task Task) (outcome Outcome, err error
 			}
 			return Outcome{Status: StatusFailed, Err: err}, nil
 		}
+	}
+	if err := r.sessionStart(ctx, window); err != nil {
+		if ctx.Err() != nil {
+			return Outcome{Status: StatusInterrupted}, nil
+		}
+		return Outcome{Status: StatusFailed, Err: err}, nil
 	}
 	for {
 		result := r.step(ctx)

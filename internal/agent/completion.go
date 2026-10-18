@@ -10,10 +10,11 @@ import (
 )
 
 // checkCompletion keeps the run going when it replies without tools while work
-// is left: open items on its chain's todo list, or files it changed without a
-// successful check since. Each check speaks once per run, and only while budget
-// remains and the model can use tools; the reply is kept and the next reply
-// without tools completes the run. It reports whether it took over the step.
+// is left: open items on its chain's todo list, files it changed without a
+// successful check since, or a Stop hook that blocks. The first two speak once
+// per run, Stop hooks up to stopHookLimit times, and only while budget remains
+// and the model can use tools; the reply is kept and the next reply without
+// tools completes the run. It reports whether it took over the step.
 func (r *run) checkCompletion(ctx context.Context, gen generation, response providers.Response) (stepResult, bool) {
 	if r.exhausted() != "" || !ToolUseAllowed(r.task.Model) {
 		return stepResult{}, false
@@ -21,6 +22,9 @@ func (r *run) checkCompletion(ctx context.Context, gen generation, response prov
 	note := r.openTodoNote(ctx)
 	if note == "" {
 		note = r.verifyNote()
+	}
+	if note == "" {
+		note = r.stopHookNote(ctx, response.Text)
 	}
 	if note == "" {
 		return stepResult{}, false

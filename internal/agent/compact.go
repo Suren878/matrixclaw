@@ -31,6 +31,9 @@ func (r *run) compactHistory(ctx context.Context, reuse *providers.Request, befo
 	if coveredTokens*10 < before {
 		return false, nil
 	}
+	if r.Hooks != nil {
+		r.Hooks.PreCompact(ctx, "auto")
+	}
 	summary, err := r.summary(ctx, reuse, previous, covered)
 	if err != nil {
 		return false, fmt.Errorf("auto compact session: %w", err)

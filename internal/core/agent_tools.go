@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
-	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -64,16 +63,17 @@ func (t coreTools) Authorize(ctx context.Context, name string, call tools.Call) 
 		call.WorkingDir = session.WorkingDir
 	}
 	t.authorized.Delete(call.ToolCallID)
-	check, err := t.c.checkPermission(ctx, call.SessionID, spec, call)
+	check, err := t.c.permitCall(ctx, name, spec, call)
 	if err != nil {
 		return agent.Decision{}, err
 	}
-	if check.verdict.Effect == permission.Deny {
-		return agent.Decision{Reason: blockedResult(check.verdict.Rule).Content}, nil
+	if refusal, refused := check.refusal(); refused {
+		return agent.Decision{Reason: refusal}, nil
 	}
 	if call.ToolCallID != "" {
 		t.authorized.Store(call.ToolCallID, check)
 	}
+	call = check.input(call)
 	decision := agent.Decision{Allowed: true, Barrier: spec.Mutates() && check.ask, Key: t.c.tools.ConcurrencyKey(spec.ID, call)}
 	if spec.ID == agentToolName {
 		input := parseAgentInput(call.Args)

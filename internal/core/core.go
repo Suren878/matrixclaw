@@ -10,6 +10,7 @@ import (
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/ids"
 )
 
@@ -56,6 +57,8 @@ type Core struct {
 	backgroundTasks int
 	// commandEnv is the environment of shell commands; nil inherits the daemon's.
 	commandEnv func() []string
+	// hooks runs the user's hooks and the checks after edits; nil runs none.
+	hooks *hooks.Runner
 	// backgroundAgents bounds the background subagents of one session.
 	backgroundAgents int
 	// executing counts the runs goroutineStarter started; once stopped it

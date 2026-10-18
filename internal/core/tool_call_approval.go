@@ -42,6 +42,7 @@ func (c *Core) requestApproval(ctx context.Context, prepared preparedToolCall, r
 	if err := c.store.CreateApproval(ctx, approval); err != nil {
 		return Approval{}, err
 	}
+	c.notifyApproval(approval)
 	audience, audienceRun := approval.SessionID, approval.RunID
 	if subagent {
 		audience, audienceRun = task.SessionID, task.RunID

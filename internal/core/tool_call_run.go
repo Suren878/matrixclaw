@@ -8,22 +8,24 @@ import (
 )
 
 // runToolCall runs a call as its permission says (check, or evaluated now when
-// nil): a deny rule blocks it; a call that waits for approval returns the
-// tool's preview as its request instead of a result; any other call runs, and
-// may recheck the rules for subjects it reaches later.
+// nil): a deny rule or a hook blocks it; a call that waits for approval returns
+// the tool's preview as its request instead of a result; any other call runs,
+// with the arguments its hooks rewrote, and may recheck the rules for subjects
+// it reaches later. What hooks and checks after it say ends its result.
 func (c *Core) runToolCall(ctx context.Context, prepared preparedToolCall, input ExecuteToolInput, check *callPermission) (tools.Result, *tools.ApprovalRequest, error) {
 	call := prepared.call(input)
 	if check == nil {
-		evaluated, err := c.checkPermission(ctx, prepared.SessionID, prepared.Spec, call)
+		evaluated, err := c.permitCall(ctx, prepared.ToolName, prepared.Spec, call)
 		if err != nil {
 			return tools.Result{}, nil, err
 		}
 		check = &evaluated
 	}
-	switch {
-	case check.verdict.Effect == permission.Deny:
-		return blockedResult(check.verdict.Rule), nil, nil
-	case check.ask:
+	call = check.input(call)
+	if refusal, refused := check.refusal(); refused {
+		return tools.Result{Content: refusal, Status: tools.ResultStatusError}, nil, nil
+	}
+	if check.ask {
 		request, refused := c.tools.Preview(ctx, prepared.ToolName, call)
 		if refused != nil {
 			return *refused, nil, nil
@@ -31,10 +33,15 @@ func (c *Core) runToolCall(ctx context.Context, prepared preparedToolCall, input
 		if check.secret {
 			request.Description += "\nThis path may hold secrets."
 		}
-		if check.verdict.Effect == permission.Ask {
+		switch {
+		case check.hook.asked != "":
+			request.Description += "\nAsked by hook: " + check.hook.asked
+		case check.verdict.Effect == permission.Ask:
 			request.Description += "\nAsked by rule " + check.verdict.Rule.String() + "."
-		} else if suggestion, ok := permission.Suggest(check.request, check.root); ok {
-			request.Suggestion = &suggestion
+		default:
+			if suggestion, ok := permission.Suggest(check.request, check.root); ok {
+				request.Suggestion = &suggestion
+			}
 		}
 		return tools.Result{}, &request, nil
 	}
@@ -42,7 +49,8 @@ func (c *Core) runToolCall(ctx context.Context, prepared preparedToolCall, input
 	if err != nil {
 		return result, nil, err
 	}
-	return c.keepLargeOutput(prepared.SessionID, result), nil, nil
+	result = c.keepLargeOutput(prepared.SessionID, result)
+	return c.afterToolUse(ctx, *check, call, prepared.ToolName, result), nil, nil
 }
 
 func (prepared preparedToolCall) call(input ExecuteToolInput) tools.Call {
