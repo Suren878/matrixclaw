@@ -320,45 +320,36 @@ func (d *Dispatcher) handleSessionRename(ctx context.Context, sessionID string, 
 	}, nil
 }
 
+// handleSessionModel opens the provider list of a MatrixClaw session and the
+// model list of an external agent session.
 func (d *Dispatcher) handleSessionModel(ctx context.Context, sessionID string) (Result, error) {
 	session, err := d.findSession(ctx, sessionID)
 	if err != nil {
 		return Result{}, err
 	}
-	response, err := d.daemon.SessionModels(ctx, session.ID)
+	if !core.CoreSessionIsExternalAgent(session) {
+		return d.sessionProviderPicker(ctx, session, sessionModel.command(session.ID), sessionMenu.command(session.ID))
+	}
+	response, err := d.daemon.SessionModels(ctx, session.ID, "")
 	if err != nil {
 		return Result{}, err
 	}
-	picker := sessionModelPicker(session.ID, response)
-	if len(picker.Items) == 0 {
+	if len(response.Models) == 0 {
 		return textResult("No models are available for this session."), nil
 	}
-	return Result{Screen: picker}, nil
-}
-
-func sessionModelPicker(sessionID string, response core.SessionModelsResponse) PickerData {
-	current := strings.TrimSpace(response.ModelID)
-	picker := NewPickerData(PickerSessionModels, "Model").
-		Command(sessionModel.command(sessionID)).
-		Meta(current).
-		Select(sessionMenu.command(sessionID))
-	for _, modelID := range response.Models {
-		modelID = strings.TrimSpace(modelID)
-		if modelID == "" {
-			continue
-		}
-		picker.Item(PickerItem{
-			ID:       modelID,
-			Title:    modelID,
-			Selected: modelID == current,
-			Command:  sessionSetModel.command(sessionID, modelID),
-		})
+	choice := modelChoice{
+		title:   "Model",
+		command: sessionModel.command(session.ID),
+		back:    sessionMenu.command(session.ID),
+		current: response.ModelID,
+		models:  response.Models,
+		choose:  func(model string) string { return sessionSetModel.command(session.ID, model) },
 	}
-	return picker.Build()
+	return Result{Screen: choice.picker()}, nil
 }
 
 func (d *Dispatcher) handleSessionSetModel(ctx context.Context, sessionID string, modelID string) (Result, error) {
-	session, err := d.daemon.UpdateSessionModel(ctx, sessionID, modelID)
+	session, err := d.daemon.UpdateSessionLLM(ctx, sessionID, "", modelID)
 	if err != nil {
 		return Result{}, err
 	}

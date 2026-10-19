@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/externalagents"
+	"github.com/Suren878/matrixclaw/internal/textutil"
 )
 
 // KindAndMode is the kind and permission mode of the session the input
@@ -255,36 +256,11 @@ func (c *Core) resolveSession(ctx context.Context, input HandleMessageInput) (Se
 	return session, nil
 }
 
-func (c *Core) UpdateSessionProvider(ctx context.Context, sessionID string, providerID string) (Session, error) {
+// UpdateSessionLLM sets the provider and model of a session; an empty
+// provider keeps the session's. An external agent session takes a model only.
+func (c *Core) UpdateSessionLLM(ctx context.Context, sessionID string, providerID string, modelID string) (Session, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	providerID = strings.TrimSpace(providerID)
-	if sessionID == "" || providerID == "" {
-		return Session{}, fmt.Errorf("%w: session id and provider id are required", ErrInvalidInput)
-	}
-	session, err := c.store.GetSession(ctx, sessionID)
-	if err != nil {
-		return Session{}, err
-	}
-	session = c.decorateSessionLLM(session)
-	llms := c.sessionLLMs()
-	if llms == nil {
-		return Session{}, fmt.Errorf("%w: provider registry unavailable", ErrExecutionUnavailable)
-	}
-	_, modelID, err := llms.Normalize(providerID, "")
-	if err != nil {
-		return Session{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
-	}
-	session.ProviderID = providerID
-	session.ModelID = modelID
-	session.UpdatedAt = c.now().UTC()
-	if err := c.store.UpdateSession(ctx, session); err != nil {
-		return Session{}, err
-	}
-	return c.decorateSessionLLM(session), nil
-}
-
-func (c *Core) UpdateSessionModel(ctx context.Context, sessionID string, modelID string) (Session, error) {
-	sessionID = strings.TrimSpace(sessionID)
 	modelID = strings.TrimSpace(modelID)
 	if sessionID == "" || modelID == "" {
 		return Session{}, fmt.Errorf("%w: session id and model id are required", ErrInvalidInput)
@@ -295,6 +271,9 @@ func (c *Core) UpdateSessionModel(ctx context.Context, sessionID string, modelID
 	}
 	session = c.decorateSessionLLM(session)
 	if CoreSessionIsExternalAgent(session) {
+		if providerID != "" {
+			return Session{}, fmt.Errorf("%w: an external agent session has no provider", ErrInvalidInput)
+		}
 		session.ModelID = modelID
 		session.UpdatedAt = c.now().UTC()
 		if err := c.store.UpdateSession(ctx, session); err != nil {
@@ -315,15 +294,14 @@ func (c *Core) UpdateSessionModel(ctx context.Context, sessionID string, modelID
 	if llms == nil {
 		return Session{}, fmt.Errorf("%w: provider registry unavailable", ErrExecutionUnavailable)
 	}
-	providerID := session.ProviderID
 	if providerID == "" {
-		providerID, _ = llms.ActiveSelection()
+		providerID = session.ProviderID
 	}
-	_, resolvedModel, err := llms.Normalize(providerID, modelID)
+	option, resolvedModel, err := llms.Normalize(providerID, modelID)
 	if err != nil {
 		return Session{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
-	session.ProviderID = providerID
+	session.ProviderID = option.ID
 	session.ModelID = resolvedModel
 	session.UpdatedAt = c.now().UTC()
 	if err := c.store.UpdateSession(ctx, session); err != nil {
@@ -340,29 +318,48 @@ func (c *Core) SessionProviderOptions() []SessionProviderOption {
 	return llms.Providers()
 }
 
-func (c *Core) ModelsForSession(ctx context.Context, sessionID string) (string, string, []string, error) {
+// ModelsForSession lists the models provider offers the session (an empty
+// provider is the session's own) with the one the session would use; a
+// failed discovery is reported in ModelsError.
+func (c *Core) ModelsForSession(ctx context.Context, sessionID string, providerID string) (SessionModelsResponse, error) {
 	session, err := c.storedSession(ctx, sessionID)
 	if err != nil {
-		return "", "", nil, err
+		return SessionModelsResponse{}, err
 	}
 	session = c.decorateSessionLLM(session)
+	providerID = strings.TrimSpace(providerID)
 	if CoreSessionIsExternalAgent(session) {
-		modelID := session.ModelID
+		if providerID != "" {
+			return SessionModelsResponse{}, fmt.Errorf("%w: an external agent session has no provider", ErrInvalidInput)
+		}
 		models := c.externalAgentModels(ctx, session)
+		modelID := session.ModelID
 		if modelID == "" && len(models) > 0 {
 			modelID = models[0]
 		}
-		return "", modelID, models, nil
+		return SessionModelsResponse{ModelID: modelID, Models: models}, nil
 	}
 	llms := c.sessionLLMs()
 	if llms == nil {
-		return session.ProviderID, session.ModelID, nil, fmt.Errorf("%w: provider registry unavailable", ErrExecutionUnavailable)
+		return SessionModelsResponse{}, fmt.Errorf("%w: provider registry unavailable", ErrExecutionUnavailable)
 	}
-	models, err := llms.Models(ctx, session.ProviderID)
+	option, modelID, err := llms.Normalize(textutil.FirstNonEmpty(providerID, session.ProviderID), "")
 	if err != nil {
-		return session.ProviderID, session.ModelID, nil, err
+		return SessionModelsResponse{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
-	return session.ProviderID, session.ModelID, models, nil
+	if option.ID == "" {
+		return SessionModelsResponse{}, fmt.Errorf("%w: no provider configured", ErrExecutionUnavailable)
+	}
+	if strings.EqualFold(option.ID, session.ProviderID) {
+		modelID = session.ModelID
+	}
+	response := SessionModelsResponse{ProviderID: option.ID, ModelID: modelID}
+	models, err := llms.Models(ctx, option.ID)
+	if err != nil {
+		response.ModelsError = err.Error()
+	}
+	response.Models = models
+	return response, nil
 }
 
 func CoreSessionIsExternalAgent(session Session) bool {
@@ -457,12 +454,8 @@ func (c *Core) decorateSessionLLM(session Session) Session {
 	if llms == nil {
 		return session
 	}
-	providerID, modelID := llms.ActiveSelection()
 	if session.ProviderID == "" {
-		session.ProviderID = providerID
-	}
-	if session.ModelID == "" {
-		session.ModelID = modelID
+		session.ProviderID, _ = llms.ActiveSelection()
 	}
 	if session.ProviderID != "" {
 		if _, resolvedModel, err := llms.Normalize(session.ProviderID, session.ModelID); err == nil {

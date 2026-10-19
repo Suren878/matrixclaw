@@ -107,15 +107,14 @@ func (d *FormCommand) items() []components.Item {
 	items := make([]components.Item, 0, len(d.data.Fields))
 	for _, field := range d.data.Fields {
 		tone := components.RowToneNormal
-		if strings.TrimSpace(field.ID) == "model" && strings.TrimSpace(field.Value) != "" && !field.Disabled {
+		if strings.TrimSpace(field.ID) == "model" && strings.TrimSpace(field.Value) != "" {
 			tone = components.RowToneAccent
 		}
 		items = append(items, components.Item{
-			ID:       strings.TrimSpace(field.ID),
-			Title:    strings.TrimSpace(field.Label),
-			Status:   strings.TrimSpace(field.Value),
-			Tone:     tone,
-			Disabled: field.Disabled,
+			ID:     strings.TrimSpace(field.ID),
+			Title:  strings.TrimSpace(field.Label),
+			Status: strings.TrimSpace(field.Value),
+			Tone:   tone,
 		})
 	}
 	return items

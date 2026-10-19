@@ -2,7 +2,6 @@ package controlplane
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -11,67 +10,150 @@ import (
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func TestProviderPickerItemsSelectsConfiguredProviderWithoutEditingSetup(t *testing.T) {
-	items := providerPickerItems([]setup.ProviderSetupItem{
-		{ID: "current", Name: "Current", Configured: true},
-		{ID: "custom-cloud", Name: "Custom Cloud", Configured: true},
+func TestProviderPickerItemsOpenTheModelsOfEveryConfiguredProvider(t *testing.T) {
+	providers := []setup.ProviderSetupItem{
+		{ID: "current", Name: "Current", Model: "default-model", Configured: true},
+		{ID: "custom-cloud", Name: "Custom Cloud", Model: "cloud-model", Configured: true},
 		{ID: "new", Name: "New", Configured: false},
-	}, &core.Session{ProviderID: "current", ModelID: "current-model"}, true)
+	}
+	session := core.Session{ID: "s1", ProviderID: "current", ModelID: "current-model"}
 
-	commands := map[string]string{}
-	for _, item := range items {
-		commands[item.ID] = item.Command
+	items := map[string]PickerItem{}
+	for _, item := range providerPickerItems(providers, session, true) {
+		items[item.ID] = item
 	}
-	if got := commands["current"]; got != "/provider edit current" {
-		t.Fatalf("current provider command = %q, want edit command", got)
+	if got := items["current"]; got.Command != "/provider models s1 current" || !got.Selected || got.Info != "current-model" {
+		t.Fatalf("current provider = %+v, want its models with the session's model", got)
 	}
-	if got := commands["custom-cloud"]; got != "/provider use custom-cloud" {
-		t.Fatalf("configured provider command = %q, want session selection command", got)
+	if got := items["custom-cloud"]; got.Command != "/provider models s1 custom-cloud" || got.Selected || got.Info != "cloud-model" {
+		t.Fatalf("configured provider = %+v, want its models", got)
 	}
-	if got := commands["new"]; got != "/provider edit new" {
+	if got := items["new"].Command; got != "/provider edit new" {
 		t.Fatalf("unconfigured provider command = %q, want setup command", got)
 	}
-}
-
-func TestSavedProviderFormSelectsTheProviderInTheSession(t *testing.T) {
-	runtime := newProviderDaemon(t)
-	runtime.configured = setup.ProviderSetupItem{ID: "custom-cloud", Name: "Custom Cloud", Configured: true}
-	runtime.providers = []setup.ProviderSetupItem{
-		{ID: "old", Name: "Old", Configured: true},
-		{ID: "custom-cloud", Name: "Custom Cloud", Type: "openai-compatible", BaseURL: "http://x", Model: "m", APIKeyPreview: "****1234", Configured: true},
+	if got := items["default"].Command; got != "/provider default" {
+		t.Fatalf("default for new sessions command = %q", got)
 	}
-	runtime.updated = core.Session{ID: "s1", ProviderID: "custom-cloud", ModelID: "custom-model"}
-	form := runtime.run("/provider edit custom-cloud")
 
-	result := runtime.run(screenOf[FormData](t, form).SubmitCommand)
-
-	for _, item := range screenOf[PickerData](t, result).Items {
-		if item.ID == "custom-cloud" {
-			if !item.Selected || item.Info != "custom-model" {
-				t.Fatalf("saved provider item = %+v", item)
-			}
-			return
+	for _, item := range providerPickerItems(providers, session, false) {
+		if item.ID == "new" || item.ID == "default" || item.ID == "custom" {
+			t.Fatalf("a member sees %q", item.ID)
 		}
 	}
-	t.Fatal("saved provider is missing from picker")
 }
 
-func TestSavedProviderFormReportsSessionSelectionFailure(t *testing.T) {
+func TestProviderModelsSetProviderAndModelTogether(t *testing.T) {
 	runtime := newProviderDaemon(t)
-	runtime.configured = setup.ProviderSetupItem{ID: "custom-cloud", Configured: true}
-	runtime.providers = []setup.ProviderSetupItem{{ID: "custom-cloud", Type: "openai-compatible", Name: "Custom Cloud", BaseURL: "http://x", Model: "m", APIKeyPreview: "****1234", Configured: true}}
-	runtime.updateErr = errors.New("write failed")
-	form := runtime.run("/provider edit custom-cloud")
+	runtime.sessions = []core.Session{{ID: "s1", ProviderID: "openai", ModelID: "gpt-5"}}
+	runtime.models = core.SessionModelsResponse{ProviderID: "foresko", ModelID: "qwen3.8", Models: []string{"gemma-4-26B-A4B", "qwen3.8"}}
+	runtime.updated = core.Session{ID: "s1", ProviderID: "foresko", ModelID: "gemma-4-26B-A4B"}
 
-	if _, err := runtime.dispatcher(core.RoleOwner).Handle(context.Background(), screenOf[FormData](t, form).SubmitCommand); err == nil {
-		t.Fatal("session selection failure was ignored")
+	picker := screenOf[PickerData](t, runtime.run("/provider models s1 foresko"))
+	if runtime.modelsProvider != "foresko" || picker.Back != "/session model s1" {
+		t.Fatalf("models of %q, back %q", runtime.modelsProvider, picker.Back)
+	}
+	if len(picker.Items) != 3 || picker.Items[0].Command != "/provider use s1 foresko gemma-4-26B-A4B" || picker.Items[1].Selected || picker.Items[2].Command != "/provider edit foresko" {
+		t.Fatalf("model picker = %+v", picker.Items)
+	}
+
+	result := runtime.run(picker.Items[0].Command)
+	if runtime.llm != (core.UpdateSessionLLMRequest{ProviderID: "foresko", ModelID: "gemma-4-26B-A4B"}) {
+		t.Fatalf("PATCH llm = %+v", runtime.llm)
+	}
+	if result.Text() != "✅ Model selected: foresko · gemma-4-26B-A4B" || runtime.called("POST /v1/sessions/s1/system-message") != 1 {
+		t.Fatalf("confirmation = %q", result.Text())
+	}
+}
+
+func TestModelPickerTicksTheSessionModelAndOffersOneModel(t *testing.T) {
+	runtime := newProviderDaemon(t)
+	runtime.sessions = []core.Session{{ID: "s1", ProviderID: "foresko", ModelID: "qwen3.8"}}
+	runtime.providers = []setup.ProviderSetupItem{{ID: "foresko", Name: "Foresko", Configured: true}}
+	runtime.models = core.SessionModelsResponse{ProviderID: "foresko", ModelID: "qwen3.8", Models: []string{"qwen3.8"}}
+
+	picker := screenOf[PickerData](t, runtime.runAs(core.RoleMember, "/provider foresko"))
+	if len(picker.Items) != 1 || !picker.Items[0].Selected || picker.Items[0].Command != "/provider use s1 foresko qwen3.8" {
+		t.Fatalf("member's one-model picker = %+v", picker.Items)
+	}
+}
+
+func TestModelPickerFallsBackToTypingWhenDiscoveryFails(t *testing.T) {
+	runtime := newProviderDaemon(t)
+	runtime.models = core.SessionModelsResponse{ProviderID: "local", ModelID: "llama", ModelsError: "connection refused"}
+	runtime.updated = core.Session{ID: "s1", ProviderID: "local", ModelID: "llama-70b"}
+
+	picker := screenOf[PickerData](t, runtime.run("/provider models s1 local"))
+	if picker.Meta != "connection refused" || len(picker.Items) != 3 || picker.Items[0].Command != "/provider use s1 local llama" {
+		t.Fatalf("fallback picker = %+v", picker)
+	}
+	prompt := runtime.run(picker.Items[1].Command)
+	runtime.answer(prompt, "llama-70b")
+	if runtime.llm != (core.UpdateSessionLLMRequest{ProviderID: "local", ModelID: "llama-70b"}) {
+		t.Fatalf("typed model sent %+v", runtime.llm)
+	}
+}
+
+func TestSavedProviderFormLeavesTheSessionAlone(t *testing.T) {
+	runtime := newProviderDaemon(t)
+	runtime.sessions = []core.Session{{ID: "s1", ProviderID: "old", ModelID: "old-model"}}
+	runtime.configured = setup.ProviderSetupItem{ID: "openai", Name: "OpenAI", Configured: true}
+	runtime.providers = []setup.ProviderSetupItem{
+		{ID: "old", Name: "Old", Configured: true, Active: true, Model: "old-model"},
+		{ID: "openai", Name: "OpenAI", Type: "openai", Model: "gpt-5", APIKeyPreview: "****1234", Configured: true},
+	}
+	form := screenOf[FormData](t, runtime.run("/provider edit openai"))
+	for _, field := range form.Fields {
+		if field.ID == "model" {
+			t.Fatalf("the provider form has a model field: %+v", form.Fields)
+		}
+	}
+
+	result := runtime.run(form.SubmitCommand)
+
+	if runtime.called("PATCH /v1/sessions/s1/llm") != 0 || runtime.lastUpdate.Active || runtime.lastUpdate.Model != nil {
+		t.Fatalf("saving switched the session or the default: %+v", runtime.lastUpdate)
+	}
+	picker := screenOf[PickerData](t, result)
+	if picker.Meta != "Default for new sessions: Old · old-model" || !picker.Items[0].Selected || picker.Items[0].ID != "old" {
+		t.Fatalf("provider list after save = %+v", picker)
+	}
+}
+
+func TestDefaultForNewSessionsSetsTheActiveProviderAndModel(t *testing.T) {
+	runtime := newProviderDaemon(t)
+	runtime.providers = []setup.ProviderSetupItem{
+		{ID: "old", Name: "Old", Configured: true, Active: true, Model: "old-model"},
+		{ID: "openai", Name: "OpenAI", Model: "gpt-5", Configured: true},
+		{ID: "new", Name: "New"},
+	}
+	runtime.catalog = setup.ProviderModelsResponse{Status: setup.ProviderModelStatusOK, Models: []string{"gpt-5", "gpt-5-mini"}}
+	runtime.configured = setup.ProviderSetupItem{ID: "openai", Name: "OpenAI", Model: "gpt-5-mini", Configured: true, Active: true}
+
+	list := screenOf[PickerData](t, runtime.run("/provider default"))
+	if len(list.Items) != 2 || !list.Items[0].Selected || list.Items[1].Command != "/provider default openai" {
+		t.Fatalf("default providers = %+v", list.Items)
+	}
+	models := screenOf[PickerData](t, runtime.run(list.Items[1].Command))
+	if models.Items[1].Command != "/provider default-use openai gpt-5-mini" || models.Items[0].Selected {
+		t.Fatalf("default models = %+v", models.Items)
+	}
+
+	result := runtime.run(models.Items[1].Command)
+
+	if runtime.lastID != "openai" || deref(runtime.lastUpdate.Model) != "gpt-5-mini" || !runtime.lastUpdate.Active {
+		t.Fatalf("saved %q %+v", runtime.lastID, runtime.lastUpdate)
+	}
+	if result.Text() != "✅ Default for new sessions: OpenAI · gpt-5-mini" || runtime.called("PATCH /v1/sessions/s1/llm") != 0 {
+		t.Fatalf("result = %q", result.Text())
+	}
+	if got := runtime.runAs(core.RoleMember, "/provider default").Text(); got != ownerOnlySettings {
+		t.Fatalf("member default = %q", got)
 	}
 }
 
 func TestProviderFormKeepsTheKeyOutOfCommands(t *testing.T) {
 	runtime := newProviderDaemon(t)
 	runtime.configured = setup.ProviderSetupItem{ID: "local-ai", Configured: true}
-	runtime.updated = core.Session{ID: "s1", ProviderID: "local-ai"}
 	results := []Result{runtime.run("/provider custom new openai")}
 	formID := formIDOf(t, results[0])
 	commands := []string{}
@@ -100,7 +182,7 @@ func TestProviderFormKeepsTheKeyOutOfCommands(t *testing.T) {
 
 	runtime.run(screenOf[FormData](t, results[len(results)-2]).SubmitCommand)
 	update := runtime.lastUpdate
-	if runtime.lastID != "local-ai" || deref(update.APIKey) != "sk-secret-1234" || deref(update.Name) != "Local AI" || deref(update.Model) != "qwen" || deref(update.Type) != "openai-compatible" || !update.Active {
+	if runtime.lastID != "local-ai" || deref(update.APIKey) != "sk-secret-1234" || deref(update.Name) != "Local AI" || deref(update.Model) != "qwen" || deref(update.Type) != "openai-compatible" || update.Active {
 		t.Fatalf("saved %q %+v", runtime.lastID, update)
 	}
 	if expired := runtime.run(providerFormShow.command(formID)); !strings.Contains(expired.Text(), "expired") {
@@ -156,13 +238,15 @@ func deref(value *string) string {
 // providerDaemon serves the provider setup and session LLM endpoints.
 type providerDaemon struct {
 	*fakeDaemon
-	lastID     string
-	lastUpdate setup.ProviderSetupUpdate
-	configured setup.ProviderSetupItem
-	providers  []setup.ProviderSetupItem
-	updated    core.Session
-	updateErr  error
-	models     core.SessionModelsResponse
+	lastID         string
+	lastUpdate     setup.ProviderSetupUpdate
+	configured     setup.ProviderSetupItem
+	providers      []setup.ProviderSetupItem
+	catalog        setup.ProviderModelsResponse
+	updated        core.Session
+	llm            core.UpdateSessionLLMRequest
+	models         core.SessionModelsResponse
+	modelsProvider string
 }
 
 func newProviderDaemon(t *testing.T) *providerDaemon {
@@ -172,12 +256,13 @@ func newProviderDaemon(t *testing.T) *providerDaemon {
 	}).on("PATCH /v1/setup/providers/{id}", func(r *http.Request) any {
 		d.lastID, d.lastUpdate = r.PathValue("id"), decode[setup.ProviderSetupUpdate](r)
 		return setup.ProviderSetupResponse{Provider: d.configured}
-	}).on("PATCH /v1/sessions/{id}/llm", func(*http.Request) any {
-		if d.updateErr != nil {
-			return d.updateErr
-		}
+	}).on("POST /v1/setup/providers/{id}/models", func(*http.Request) any {
+		return d.catalog
+	}).on("PATCH /v1/sessions/{id}/llm", func(r *http.Request) any {
+		d.llm = decode[core.UpdateSessionLLMRequest](r)
 		return core.SessionResponse{Session: d.updated}
-	}).on("GET /v1/sessions/{id}/models", func(*http.Request) any {
+	}).on("GET /v1/sessions/{id}/models", func(r *http.Request) any {
+		d.modelsProvider = r.URL.Query().Get("provider")
 		return d.models
 	}).on("POST /v1/sessions/{id}/system-message", func(*http.Request) any {
 		return core.MessageResponse{}
@@ -185,44 +270,13 @@ func newProviderDaemon(t *testing.T) *providerDaemon {
 	return d
 }
 
-func TestUseProviderOffersModelPickerWhenCatalogHasMultipleModels(t *testing.T) {
+func TestSessionMenuModelOpensTheProviderList(t *testing.T) {
 	runtime := newProviderDaemon(t)
-	runtime.updated = core.Session{ID: "session-1", ProviderID: "foresko", ModelID: "qwen3.8"}
-	runtime.models = core.SessionModelsResponse{ProviderID: "foresko", ModelID: "qwen3.8", Models: []string{"gemma-4-26B-A4B", "qwen3.8"}}
-	dispatcher := runtime.dispatcher(core.RoleOwner)
+	runtime.sessions = []core.Session{{ID: "s1", ProviderID: "openai", ModelID: "gpt-5"}}
+	runtime.providers = []setup.ProviderSetupItem{{ID: "openai", Name: "OpenAI", Configured: true}}
 
-	result, err := dispatcher.useProvider(context.Background(), &core.Session{ID: "session-1"}, "foresko")
-	if err != nil {
-		t.Fatalf("useProvider: %v", err)
-	}
-	if !isScreen[PickerData](result) {
-		t.Fatal("useProvider returned no model picker")
-	}
-	if screenOf[PickerData](t, result).Kind != PickerSessionModels {
-		t.Fatalf("picker kind = %q, want %q", screenOf[PickerData](t, result).Kind, PickerSessionModels)
-	}
-	if len(screenOf[PickerData](t, result).Items) != 2 {
-		t.Fatalf("model count = %d, want 2", len(screenOf[PickerData](t, result).Items))
-	}
-	if got := screenOf[PickerData](t, result).Items[0].Command; got != "/session set-model session-1 gemma-4-26B-A4B" {
-		t.Fatalf("Gemma command = %q", got)
-	}
-}
-
-func TestUseProviderKeepsConfirmationWhenCatalogHasOneModel(t *testing.T) {
-	runtime := newProviderDaemon(t)
-	runtime.updated = core.Session{ID: "session-1", ProviderID: "foresko", ModelID: "qwen3.8"}
-	runtime.models = core.SessionModelsResponse{ProviderID: "foresko", ModelID: "qwen3.8", Models: []string{"qwen3.8"}}
-	dispatcher := runtime.dispatcher(core.RoleOwner)
-
-	result, err := dispatcher.useProvider(context.Background(), &core.Session{ID: "session-1"}, "foresko")
-	if err != nil {
-		t.Fatalf("useProvider: %v", err)
-	}
-	if isScreen[PickerData](result) {
-		t.Fatal("single-model provider unexpectedly returned a picker")
-	}
-	if result.Text() != "✅ Provider selected: foresko · qwen3.8" {
-		t.Fatalf("confirmation = %q", result.Text())
+	picker := screenOf[PickerData](t, runtime.runAs(core.RoleMember, "/session model s1"))
+	if picker.Kind != PickerProvider || picker.Back != "/session menu s1" || picker.Items[0].Command != "/provider models s1 openai" {
+		t.Fatalf("session model row = %+v", picker)
 	}
 }

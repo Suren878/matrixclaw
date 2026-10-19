@@ -27,7 +27,7 @@ func TestNonOwnersSeeNoSettingsOrDaemonControls(t *testing.T) {
 	if ids := pickerItemIDs(daemon.runAs(core.RoleMember, "/provider")); !slices.Equal(ids, []string{"openai"}) {
 		t.Fatalf("member provider picker = %v", ids)
 	}
-	if ids := pickerItemIDs(daemon.runAs(core.RoleOwner, "/provider")); !slices.Equal(ids, []string{"openai", "gemini", "custom"}) {
+	if ids := pickerItemIDs(daemon.runAs(core.RoleOwner, "/provider")); !slices.Equal(ids, []string{"openai", "gemini", "default", "custom"}) {
 		t.Fatalf("owner provider picker = %v", ids)
 	}
 }

@@ -7,28 +7,23 @@ import (
 	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
-// providerPickerItems lists the providers for session; only the owner gets
-// the ones still to configure and the custom provider.
-func providerPickerItems(items []setup.ProviderSetupItem, session *core.Session, owner bool) []PickerItem {
+// providerPickerItems lists the providers for session: a configured one opens
+// its models. Only the owner gets the ones still to configure, the custom
+// provider and the default for new sessions.
+func providerPickerItems(items []setup.ProviderSetupItem, session core.Session, owner bool) []PickerItem {
 	out := make([]PickerItem, 0, len(items)+2)
-	sessionProviderID := ""
-	sessionModelID := ""
-	if session != nil {
-		sessionProviderID = strings.TrimSpace(session.ProviderID)
-		sessionModelID = strings.TrimSpace(session.ModelID)
-	}
 	for _, provider := range items {
 		if !owner && !provider.Configured {
 			continue
 		}
-		selected := strings.TrimSpace(provider.ID) == sessionProviderID
+		selected := strings.EqualFold(strings.TrimSpace(provider.ID), strings.TrimSpace(session.ProviderID))
 		info := providerPickerInfo(provider)
-		if selected && sessionModelID != "" {
-			info = sessionModelID
+		if selected && strings.TrimSpace(session.ModelID) != "" {
+			info = strings.TrimSpace(session.ModelID)
 		}
 		command := providerEdit.command(provider.ID)
-		if provider.Configured && (!selected || !owner) {
-			command = providerUse.command(provider.ID)
+		if provider.Configured {
+			command = providerModels.command(session.ID, provider.ID)
 		}
 		out = append(out, PickerItem{
 			ID:       provider.ID,
@@ -39,7 +34,10 @@ func providerPickerItems(items []setup.ProviderSetupItem, session *core.Session,
 		})
 	}
 	if owner {
-		out = append(out, PickerItem{ID: "custom", Title: "Custom Provider", Command: providerCustom.command(), Role: PickerItemRoleAction})
+		out = append(out,
+			PickerItem{ID: "default", Title: "Default for new sessions", Command: providerDefault.command(), Role: PickerItemRoleAction},
+			PickerItem{ID: "custom", Title: "Custom Provider", Command: providerCustom.command(), Role: PickerItemRoleAction},
+		)
 	}
 	return out
 }

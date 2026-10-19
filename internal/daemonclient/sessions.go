@@ -227,33 +227,30 @@ func (c *Client) ListSessionProviders(ctx context.Context) ([]core.SessionProvid
 	return response.Providers, nil
 }
 
-func (c *Client) UpdateSessionProvider(ctx context.Context, sessionID string, providerID string) (core.Session, error) {
+// UpdateSessionLLM sets the session's provider and model; an empty provider
+// keeps the session's.
+func (c *Client) UpdateSessionLLM(ctx context.Context, sessionID string, providerID string, modelID string) (core.Session, error) {
 	var response core.SessionResponse
 	path := "/v1/sessions/" + escapedPath(sessionID) + "/llm"
-	request := core.UpdateSessionLLMRequest{ProviderID: strings.TrimSpace(providerID)}
+	request := core.UpdateSessionLLMRequest{ProviderID: strings.TrimSpace(providerID), ModelID: strings.TrimSpace(modelID)}
 	if err := c.doJSON(ctx, http.MethodPatch, path, request, &response); err != nil {
 		return core.Session{}, err
 	}
 	return response.Session, nil
 }
 
-func (c *Client) SessionModels(ctx context.Context, sessionID string) (core.SessionModelsResponse, error) {
+// SessionModels lists the models provider offers the session; an empty
+// provider is the session's own.
+func (c *Client) SessionModels(ctx context.Context, sessionID string, providerID string) (core.SessionModelsResponse, error) {
 	var response core.SessionModelsResponse
 	path := "/v1/sessions/" + escapedPath(sessionID) + "/models"
+	if providerID = strings.TrimSpace(providerID); providerID != "" {
+		path += "?provider=" + url.QueryEscape(providerID)
+	}
 	if err := c.doJSON(ctx, http.MethodGet, path, nil, &response); err != nil {
 		return core.SessionModelsResponse{}, err
 	}
 	return response, nil
-}
-
-func (c *Client) UpdateSessionModel(ctx context.Context, sessionID string, modelID string) (core.Session, error) {
-	var response core.SessionResponse
-	path := "/v1/sessions/" + escapedPath(sessionID) + "/llm"
-	request := core.UpdateSessionLLMRequest{ModelID: strings.TrimSpace(modelID)}
-	if err := c.doJSON(ctx, http.MethodPatch, path, request, &response); err != nil {
-		return core.Session{}, err
-	}
-	return response.Session, nil
 }
 
 func (c *Client) UpdateSessionPermissionMode(ctx context.Context, sessionID string, mode core.PermissionMode) (core.Session, error) {

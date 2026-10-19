@@ -9,7 +9,6 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/sessionllm"
-	"github.com/Suren878/matrixclaw/internal/setup"
 )
 
 func (s *Server) handleSessionProviders(w http.ResponseWriter, _ *http.Request) {
@@ -17,24 +16,20 @@ func (s *Server) handleSessionProviders(w http.ResponseWriter, _ *http.Request) 
 }
 
 func (s *Server) handleSessionLLMModels(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.PathValue("id")
-	providerID, modelID, models, err := s.Core.ModelsForSession(r.Context(), sessionID)
+	sessionID, providerID := r.PathValue("id"), r.URL.Query().Get("provider")
+	response, err := s.Core.ModelsForSession(r.Context(), sessionID, providerID)
 	if shouldReloadSessionLLM(err) {
 		if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
 			writeError(w, fmt.Errorf("reload provider registry: %w", reloadErr))
 			return
 		}
-		providerID, modelID, models, err = s.Core.ModelsForSession(r.Context(), sessionID)
+		response, err = s.Core.ModelsForSession(r.Context(), sessionID, providerID)
 	}
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, core.SessionModelsResponse{
-		ProviderID: providerID,
-		ModelID:    modelID,
-		Models:     models,
-	})
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleSessionLLMUpdate(w http.ResponseWriter, r *http.Request) {
@@ -43,57 +38,23 @@ func (s *Server) handleSessionLLMUpdate(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-
-	switch {
-	case strings.TrimSpace(req.ProviderID) != "":
-		session, err := s.Core.UpdateSessionProvider(r.Context(), sessionID, req.ProviderID)
-		if shouldReloadSessionLLM(err) {
-			if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
-				writeError(w, fmt.Errorf("reload provider registry: %w", reloadErr))
-				return
-			}
-			session, err = s.Core.UpdateSessionProvider(r.Context(), sessionID, req.ProviderID)
-		}
-		if err != nil {
-			writeError(w, err)
+	if strings.TrimSpace(req.ModelID) == "" {
+		writeErrorMessage(w, http.StatusBadRequest, "model_id is required")
+		return
+	}
+	session, err := s.Core.UpdateSessionLLM(r.Context(), sessionID, req.ProviderID, req.ModelID)
+	if shouldReloadSessionLLM(err) {
+		if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
+			writeError(w, fmt.Errorf("reload provider registry: %w", reloadErr))
 			return
 		}
-		writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
-	case strings.TrimSpace(req.ModelID) != "":
-		session, err := s.Core.UpdateSessionModel(r.Context(), sessionID, req.ModelID)
-		if shouldReloadSessionLLM(err) {
-			if reloadErr := s.reloadSessionLLMRegistry(r.Context()); reloadErr != nil {
-				writeError(w, fmt.Errorf("reload provider registry: %w", reloadErr))
-				return
-			}
-			session, err = s.Core.UpdateSessionModel(r.Context(), sessionID, req.ModelID)
-		}
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if roleOf(r) == core.RoleOwner {
-			if err := s.persistSessionModelSelection(r.Context(), session); err != nil {
-				writeError(w, err)
-				return
-			}
-		}
-		writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
-	default:
-		writeErrorMessage(w, http.StatusBadRequest, "provider_id or model_id is required")
+		session, err = s.Core.UpdateSessionLLM(r.Context(), sessionID, req.ProviderID, req.ModelID)
 	}
-}
-
-func (s *Server) persistSessionModelSelection(ctx context.Context, session core.Session) error {
-	providerID := strings.TrimSpace(session.ProviderID)
-	modelID := strings.TrimSpace(session.ModelID)
-	if providerID == "" || modelID == "" {
-		return nil
+	if err != nil {
+		writeError(w, err)
+		return
 	}
-	if _, err := s.Setup.ConfigureProvider(providerID, setup.ProviderSetupUpdate{Model: &modelID}); err != nil {
-		return err
-	}
-	return s.reloadSessionLLMRegistry(ctx)
+	writeJSON(w, http.StatusOK, core.SessionResponse{Session: session})
 }
 
 func (s *Server) reloadSessionLLMRegistry(ctx context.Context) error {

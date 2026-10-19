@@ -175,9 +175,10 @@ type SessionProvidersResponse struct {
 }
 
 type SessionModelsResponse struct {
-	ProviderID string   `json:"provider_id"`
-	ModelID    string   `json:"model_id"`
-	Models     []string `json:"models"`
+	ProviderID  string   `json:"provider_id"`
+	ModelID     string   `json:"model_id"`
+	Models      []string `json:"models"`
+	ModelsError string   `json:"models_error,omitempty"`
 }
 
 type ApprovalsResponse struct {
