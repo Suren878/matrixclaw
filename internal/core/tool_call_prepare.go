@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -152,7 +153,7 @@ func (c *Core) prepareToolCall(ctx context.Context, input ExecuteToolInput) (pre
 	if _, err := c.store.AppendMessage(ctx, message); err != nil {
 		return preparedToolCall{}, callScope{}, err
 	}
-	c.publishEvent(Event{
+	c.publishEvent(events.Event{
 		Type:      EventMessageCreated,
 		SessionID: sessionID,
 		RunID:     message.RunID,

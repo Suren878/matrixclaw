@@ -14,13 +14,14 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 type LiveEvent struct {
 	ID        uint64          `json:"id,omitempty"`
-	Type      core.EventType  `json:"type"`
+	Type      events.Type     `json:"type"`
 	SessionID string          `json:"session_id"`
 	RunID     string          `json:"run_id,omitempty"`
 	Payload   json.RawMessage `json:"payload,omitempty"`

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/sandbox"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
@@ -510,7 +511,7 @@ func (c *Core) taskOutputPath(sessionID string, taskID string) (string, error) {
 }
 
 func (c *Core) publishTaskUpdated(task Task) {
-	c.publishEvent(Event{Type: EventTaskUpdated, SessionID: task.SessionID, RunID: task.RunID, Payload: task})
+	c.publishEvent(events.Event{Type: EventTaskUpdated, SessionID: task.SessionID, RunID: task.RunID, Payload: task})
 }
 
 func taskInfo(task Task) tools.TaskInfo {

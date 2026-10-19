@@ -8,10 +8,11 @@ import (
 	surfacemessage "github.com/Suren878/matrixclaw/clients/terminal/ui/surface/message"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-func apply(t *testing.T, m *Model, eventType core.EventType, sessionID string, payload any) {
+func apply(t *testing.T, m *Model, eventType events.Type, sessionID string, payload any) {
 	t.Helper()
 	raw, err := json.Marshal(payload)
 	if err != nil {

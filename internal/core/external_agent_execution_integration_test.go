@@ -95,7 +95,7 @@ func TestExternalAgentBurstPersistsCoalescedProgress(t *testing.T) {
 
 	eventCtx, cancelEvents := context.WithCancel(ctx)
 	defer cancelEvents()
-	liveEvents := app.SubscribeEvents(eventCtx, session.ID)
+	liveEvents := app.SubscribeEvents(eventCtx, session.ID, 0)
 	if err := app.ExecuteRun(ctx, run.ID); err != nil {
 		t.Fatalf("execute run: %v", err)
 	}

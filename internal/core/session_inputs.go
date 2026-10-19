@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -143,8 +144,8 @@ func (c *Core) createAcceptedRun(ctx context.Context, session Session, in newRun
 		return AcceptRunResult{}, err
 	}
 	c.applyAutoSessionTitle(ctx, session, autoTitle)
-	c.publishEvent(Event{Type: EventMessageCreated, SessionID: session.ID, RunID: run.ID, Payload: message})
-	c.publishEvent(Event{Type: EventRunUpdated, SessionID: session.ID, RunID: run.ID, Payload: run})
+	c.publishEvent(events.Event{Type: EventMessageCreated, SessionID: session.ID, RunID: run.ID, Payload: message})
+	c.publishEvent(events.Event{Type: EventRunUpdated, SessionID: session.ID, RunID: run.ID, Payload: run})
 	return AcceptRunResult{
 		SessionID:   session.ID,
 		Status:      AcceptRunStatusStarted,
@@ -193,7 +194,7 @@ func sessionAcceptsNativeSteer(session Session) bool {
 }
 
 func (c *Core) publishSessionInputUpdated(input SessionInput) {
-	c.publishEvent(Event{
+	c.publishEvent(events.Event{
 		Type:      EventInputUpdated,
 		SessionID: input.SessionID,
 		RunID:     input.TargetRunID,

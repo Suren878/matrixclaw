@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -120,9 +121,9 @@ func (c *Core) afterCommit(ctx context.Context, run Run, from RunStatus, change 
 		}
 	}
 	if reply != nil {
-		c.publishEvent(Event{Type: replyEvent(created), SessionID: reply.SessionID, RunID: reply.RunID, Payload: *reply})
+		c.publishEvent(events.Event{Type: replyEvent(created), SessionID: reply.SessionID, RunID: reply.RunID, Payload: *reply})
 	}
-	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: run})
+	c.publishEvent(events.Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: run})
 	if ended {
 		if err := c.store.DeleteRunCheckpoint(ctx, run.ID); err != nil {
 			errs = append(errs, fmt.Errorf("clear the checkpoint: %w", err))
@@ -164,7 +165,7 @@ func (c *Core) stampReply(reply *transcript.Message, saved bool, now time.Time) 
 	return reply, !saved
 }
 
-func replyEvent(created bool) EventType {
+func replyEvent(created bool) events.Type {
 	if created {
 		return EventMessageCreated
 	}
@@ -184,7 +185,7 @@ func (c *Core) sealReply(ctx context.Context, reply *transcript.Message, saved b
 	if err != nil {
 		return err
 	}
-	c.publishEvent(Event{Type: replyEvent(created), SessionID: reply.SessionID, RunID: reply.RunID, Payload: *reply})
+	c.publishEvent(events.Event{Type: replyEvent(created), SessionID: reply.SessionID, RunID: reply.RunID, Payload: *reply})
 	return nil
 }
 

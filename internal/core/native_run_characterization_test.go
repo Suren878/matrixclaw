@@ -13,6 +13,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
@@ -48,11 +49,11 @@ type windowLLMs struct {
 
 func (w windowLLMs) ContextWindow(string, string) int { return w.window }
 
-func drainEvents(events <-chan core.Event) []core.Event {
-	var out []core.Event
+func drainEvents(stream <-chan events.Event) []events.Event {
+	var out []events.Event
 	for {
 		select {
-		case event, ok := <-events:
+		case event, ok := <-stream:
 			if !ok {
 				return out
 			}
@@ -63,7 +64,7 @@ func drainEvents(events <-chan core.Event) []core.Event {
 	}
 }
 
-func describeEvent(event core.Event) string {
+func describeEvent(event events.Event) string {
 	switch payload := event.Payload.(type) {
 	case transcript.Message:
 		kinds := make([]string, 0, len(payload.Parts))
@@ -118,14 +119,14 @@ func TestNativeToolRoundPublishesEventsInOrder(t *testing.T) {
 	session, run := saveCrashRecoveryRun(t, db, "events", core.RunStatusAccepted, false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	events := app.SubscribeEvents(ctx, session.ID)
+	stream := app.SubscribeEvents(ctx, session.ID, 0)
 
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
 	}
 
 	var trace []string
-	for _, event := range drainEvents(events) {
+	for _, event := range drainEvents(stream) {
 		switch event.Type {
 		case core.EventRunUpdated, core.EventMessageCreated, core.EventMessageUpdated, core.EventToolUpdated:
 			trace = append(trace, describeEvent(event))
@@ -918,7 +919,7 @@ type asyncSubagentScenario struct {
 	db      *store.SQLiteStore
 	session core.Session
 	run     core.Run
-	events  []core.Event
+	events  []events.Event
 }
 
 // runAsyncSubagentScenario lets a parent start a background subagent and end
@@ -956,7 +957,7 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 	session, run := saveCrashRecoveryRun(t, db, "async", core.RunStatusAccepted, false)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	events := app.SubscribeEvents(ctx, session.ID)
+	stream := app.SubscribeEvents(ctx, session.ID, 0)
 
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
@@ -964,17 +965,17 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 	close(parentEnded)
 
-	var seen []core.Event
+	var seen []events.Event
 	timeout := time.After(30 * time.Second)
 	for {
 		select {
-		case event, ok := <-events:
+		case event, ok := <-stream:
 			if !ok {
 				t.Fatal("the event stream closed")
 			}
 			seen = append(seen, event)
 			if wake, ok := event.Payload.(core.Run); ok && event.Type == core.EventRunUpdated && wake.Trigger == core.RunTriggerWake && wake.Status == core.RunStatusCompleted {
-				return asyncSubagentScenario{db: db, session: session, run: run, events: append(seen, drainEvents(events)...)}
+				return asyncSubagentScenario{db: db, session: session, run: run, events: append(seen, drainEvents(stream)...)}
 			}
 		case <-timeout:
 			t.Fatal("subagent completion follow-up run did not complete")

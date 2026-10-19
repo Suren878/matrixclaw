@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/externalagents/reply"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -217,14 +218,14 @@ func (c *Core) saveExternalAssistantProgress(ctx context.Context, assistant *tra
 			return err
 		}
 		*saved = true
-		c.publishEvent(Event{Type: EventMessageCreated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
+		c.publishEvent(events.Event{Type: EventMessageCreated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
 		return nil
 	}
 	assistant.UpdatedAt = now
 	if err := c.store.UpdateMessageProgress(ctx, *assistant); err != nil {
 		return err
 	}
-	c.publishEvent(Event{Type: EventMessageUpdated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
+	c.publishEvent(events.Event{Type: EventMessageUpdated, SessionID: assistant.SessionID, RunID: assistant.RunID, Payload: *assistant})
 	return nil
 }
 
@@ -241,7 +242,7 @@ func (c *Core) touchExternalRunActivity(ctx context.Context, run *Run, at time.T
 	if err := c.store.TouchRun(ctx, run.ID, at); err != nil {
 		return err
 	}
-	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
+	c.publishEvent(events.Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: *run})
 	return nil
 }
 

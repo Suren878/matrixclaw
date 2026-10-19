@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -382,7 +383,7 @@ func (c *Core) rejectRunApprovals(ctx context.Context, run Run, errText string) 
 			return err
 		}
 		audience, audienceRun := c.approvalAudience(ctx, approval)
-		c.publishEvent(Event{
+		c.publishEvent(events.Event{
 			Type:      EventApprovalResult,
 			SessionID: audience,
 			RunID:     audienceRun,

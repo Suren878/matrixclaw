@@ -49,7 +49,7 @@ func TestClearContextClearsTheTodoList(t *testing.T) {
 	if err := db.SaveSessionTodo(ctx, todo.List{SessionID: session.ID, Items: []todo.Item{{Content: "a", Status: todo.Pending}}, UpdatedRunID: run.ID}); err != nil {
 		t.Fatal(err)
 	}
-	events := app.SubscribeEvents(ctx, session.ID)
+	events := app.SubscribeEvents(ctx, session.ID, 0)
 
 	if _, err := app.ClearContext(ctx, session.ID); err != nil {
 		t.Fatal(err)

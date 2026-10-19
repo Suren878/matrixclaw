@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -14,7 +15,7 @@ func (c *Core) finishToolCall(ctx context.Context, prepared preparedToolCall, in
 	if err := c.store.UpdateMessage(ctx, toolCallMessage); err != nil {
 		return transcript.Message{}, nil, err
 	}
-	c.publishEvent(Event{
+	c.publishEvent(events.Event{
 		Type:      EventMessageUpdated,
 		SessionID: prepared.SessionID,
 		RunID:     toolCallMessage.RunID,
@@ -37,7 +38,7 @@ func (c *Core) saveToolResultMessage(ctx context.Context, prepared preparedToolC
 	if _, err := c.store.AppendMessage(ctx, message); err != nil {
 		return nil, err
 	}
-	c.publishEvent(Event{Type: EventMessageCreated, SessionID: prepared.SessionID, RunID: message.RunID, Payload: message})
+	c.publishEvent(events.Event{Type: EventMessageCreated, SessionID: prepared.SessionID, RunID: message.RunID, Payload: message})
 	return &message, nil
 }
 
@@ -59,7 +60,7 @@ func (c *Core) publishFinishedToolUpdate(prepared preparedToolCall, resultMessag
 }
 
 func (c *Core) publishToolUpdate(sessionID string, runID string, update ToolUpdate) {
-	c.publishEvent(Event{
+	c.publishEvent(events.Event{
 		Type:      EventToolUpdated,
 		SessionID: sessionID,
 		RunID:     runID,

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -47,7 +48,7 @@ func (c *Core) requestApproval(ctx context.Context, prepared preparedToolCall, r
 	if subagent {
 		audience, audienceRun = task.SessionID, task.RunID
 	}
-	c.publishEvent(Event{
+	c.publishEvent(events.Event{
 		Type:      EventApprovalRequest,
 		SessionID: audience,
 		RunID:     audienceRun,

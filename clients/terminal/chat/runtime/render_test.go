@@ -16,6 +16,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -181,7 +182,7 @@ func TestRenderCommandsDialog(t *testing.T) {
 }
 
 // deliver hands a live event to the app as its event stream would.
-func deliver(t *testing.T, m *appModel, eventType core.EventType, payload any) {
+func deliver(t *testing.T, m *appModel, eventType events.Type, payload any) {
 	t.Helper()
 	raw, err := json.Marshal(payload)
 	if err != nil {

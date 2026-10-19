@@ -39,6 +39,7 @@ flowchart LR
 | `internal/memory` | persistent memory entries and suggestions, the prompt's memory section and the `memory` tool |
 | `internal/agent` | the native agent engine (below) |
 | `internal/transcript` | message, part, finish and origin types shared by core, store, api and agent |
+| `internal/events` | the live event bus: numbered events, per-session fan-out, the replay ring |
 | `internal/tools` | tool contract and the built-in file, shell and task tools |
 | `internal/checkpoint` | file checkpoints: shadow git snapshots of working directories, diff, restore (see [CHECKPOINTS.md](CHECKPOINTS.md)) |
 | `internal/permission` | permission rules, subjects, bash parsing, mode presets |
@@ -113,7 +114,7 @@ servers and closes external agents and modules.
   `run.updated`, `tool.updated`, `approval.requested|resolved`,
   `input.updated`, `task.updated`, `todo.updated`, `goal.updated`, `context.updated` (context
   size the engine measured after each step). Replay with `?after=` covers only
-  a 256-event ring shared by all sessions.
+  a 256-event ring shared by all sessions (the bus is `internal/events`).
 - Each subscriber gets events in ID order. One that falls 512 events behind
   is closed, never skipped silently; its client reconnects and reloads. An
   event that cannot be encoded is logged and ends the stream the same way. An

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -107,7 +108,7 @@ func (c *Core) recordApprovalDecision(ctx context.Context, approval Approval, de
 		return Approval{}, err
 	}
 	audience, audienceRun := c.approvalAudience(ctx, approval)
-	c.publishEvent(Event{
+	c.publishEvent(events.Event{
 		Type:      EventApprovalResult,
 		SessionID: audience,
 		RunID:     audienceRun,

@@ -10,6 +10,7 @@ import (
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/checkpoint"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/ids"
@@ -34,7 +35,7 @@ type Core struct {
 	skillsContext   SkillsPromptContextProvider
 	memory          Memory
 	runtimeStatus   RuntimeStatusContextProvider
-	events          *eventBus
+	events          *events.Bus
 	now             func() time.Time
 	newID           func(prefix string) string
 	lifetime        context.Context
@@ -197,7 +198,7 @@ func New(cfg Config) *Core {
 		liveTasks:      map[string]*liveTask{},
 		runEnds:        map[string][]chan struct{}{},
 		runsEnding:     map[string]int{},
-		events:         newEventBus(),
+		events:         events.NewBus(),
 		now:            cfg.Clock,
 		newID:          ids.New,
 		lifetime:       cfg.Lifetime,

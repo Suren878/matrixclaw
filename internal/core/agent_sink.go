@@ -1,6 +1,9 @@
 package core
 
-import "github.com/Suren878/matrixclaw/internal/agent"
+import (
+	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/events"
+)
 
 // coreSink publishes engine events on the core event bus.
 type coreSink struct {
@@ -10,9 +13,9 @@ type coreSink struct {
 func (s coreSink) Emit(event agent.Event) {
 	switch event.Kind {
 	case agent.EventMessageCreated:
-		s.c.publishEvent(Event{Type: EventMessageCreated, SessionID: event.SessionID, RunID: event.RunID, Payload: event.Message})
+		s.c.publishEvent(events.Event{Type: EventMessageCreated, SessionID: event.SessionID, RunID: event.RunID, Payload: event.Message})
 	case agent.EventMessageUpdated:
-		s.c.publishEvent(Event{Type: EventMessageUpdated, SessionID: event.SessionID, RunID: event.RunID, Payload: event.Message})
+		s.c.publishEvent(events.Event{Type: EventMessageUpdated, SessionID: event.SessionID, RunID: event.RunID, Payload: event.Message})
 	case agent.EventToolRequested:
 		s.c.publishToolUpdate(event.SessionID, event.RunID, ToolUpdate{
 			ToolCallID: event.ToolCallID,
@@ -35,5 +38,5 @@ func (c *Core) publishContextUsage(usage ContextUsage, runID string) {
 	if last, ok := c.contextUsage.Swap(usage.SessionID, usage); ok && last == usage {
 		return
 	}
-	c.publishEvent(Event{Type: EventContextUpdated, SessionID: usage.SessionID, RunID: runID, Payload: usage})
+	c.publishEvent(events.Event{Type: EventContextUpdated, SessionID: usage.SessionID, RunID: runID, Payload: usage})
 }

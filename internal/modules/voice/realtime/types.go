@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -244,7 +245,7 @@ type CoreBridge interface {
 	ListToolSpecs() []tools.Spec
 	ExecuteTool(context.Context, core.ExecuteToolInput) (core.ExecuteToolResult, error)
 	CommitRealtimeVoiceTurn(context.Context, core.CommitRealtimeVoiceTurnInput) (core.CommitRealtimeVoiceTurnResult, error)
-	SubscribeEvents(context.Context, string) <-chan core.Event
+	SubscribeEvents(context.Context, string, uint64) <-chan events.Event
 }
 
 type ProviderConnectRequest struct {

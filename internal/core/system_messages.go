@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -35,6 +36,6 @@ func (c *Core) CreateSystemMessage(ctx context.Context, sessionID string, conten
 	if _, err := c.store.AppendMessage(ctx, message); err != nil {
 		return transcript.Message{}, err
 	}
-	c.publishEvent(Event{Type: EventMessageCreated, SessionID: sessionID, Payload: message})
+	c.publishEvent(events.Event{Type: EventMessageCreated, SessionID: sessionID, Payload: message})
 	return message, nil
 }

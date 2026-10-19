@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/textutil"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -81,7 +82,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 
 	clientCh := make(chan streamReadResult, 16)
 	providerCh := make(chan providerReadResult, 16)
-	coreCh := m.core.SubscribeEvents(streamCtx, info.CoreSessionID)
+	coreCh := m.core.SubscribeEvents(streamCtx, info.CoreSessionID, 0)
 	safego.Go("realtime.readClientEvents", func() { readClientEvents(streamCtx, stream, clientCh) })
 	safego.Go("realtime.readProviderEvents", func() { readProviderEvents(streamCtx, conn, providerCh) })
 
@@ -121,7 +122,7 @@ func (m *Manager) ServeStream(ctx context.Context, sessionID string, stream Stre
 					return nil
 				}
 				// The bus closed a subscriber that fell behind; follow on.
-				coreCh = m.core.SubscribeEvents(streamCtx, info.CoreSessionID)
+				coreCh = m.core.SubscribeEvents(streamCtx, info.CoreSessionID, 0)
 				continue
 			}
 			if err := state.handleCoreEvent(streamCtx, event); err != nil {
@@ -271,7 +272,7 @@ func (s *streamState) handleToolCalls(ctx context.Context, calls []ProviderToolC
 	return nil
 }
 
-func (s *streamState) handleCoreEvent(ctx context.Context, event core.Event) error {
+func (s *streamState) handleCoreEvent(ctx context.Context, event events.Event) error {
 	switch event.Type {
 	case core.EventApprovalResult:
 		var payload core.PermissionNotification

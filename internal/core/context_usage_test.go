@@ -27,7 +27,7 @@ func TestRunStepsAnnounceContextUsageOnlyWhenItChanges(t *testing.T) {
 	session, run := saveCrashRecoveryRun(t, db, "context-usage", core.RunStatusAccepted, false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	events := app.SubscribeEvents(ctx, session.ID)
+	events := app.SubscribeEvents(ctx, session.ID, 0)
 
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func TestClientSnapshotNamesTheNewestEventItCovers(t *testing.T) {
 	if _, err := app.UseBinding(ctx, core.UseBindingInput{Client: "terminal:test", ExternalKey: "local", SessionID: session.ID}); err != nil {
 		t.Fatal(err)
 	}
-	events := app.SubscribeEvents(ctx, session.ID)
+	events := app.SubscribeEvents(ctx, session.ID, 0)
 	if err := app.ExecuteRun(ctx, run.ID); err != nil {
 		t.Fatal(err)
 	}

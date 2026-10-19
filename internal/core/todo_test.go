@@ -140,7 +140,7 @@ func TestClearingTheTodoListTellsClients(t *testing.T) {
 	if err := db.SaveSessionTodo(ctx, todo.List{SessionID: session.ID, Items: []todo.Item{{Content: "a", Status: todo.Pending}}}); err != nil {
 		t.Fatal(err)
 	}
-	events := app.SubscribeEvents(ctx, session.ID)
+	events := app.SubscribeEvents(ctx, session.ID, 0)
 
 	list, err := app.ClearSessionTodo(ctx, session.ID)
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/checkpoint"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -224,7 +225,7 @@ func (c *Core) appendRestoreNote(ctx context.Context, cp FileCheckpoint, changes
 		return transcript.Message{}, err
 	}
 	note.Seq = seq
-	c.publishEvent(Event{Type: EventMessageCreated, SessionID: cp.SessionID, Payload: note})
+	c.publishEvent(events.Event{Type: EventMessageCreated, SessionID: cp.SessionID, Payload: note})
 	return note, nil
 }
 
