@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
@@ -488,7 +489,7 @@ func TestAGrantRunsTheCallOnceAndReadsOnlyItsRun(t *testing.T) {
 func TestMemoryListsWithoutAskingAndAsksToChange(t *testing.T) {
 	t.Parallel()
 	app, db, _, dir := permissionCore(t, core.Config{})
-	app.SetTools(tools.NewRegistry(core.MemoryToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(memory.NewTool(memory.New(db, nil))))
 	session := permissionSession(t, db, "session_memory", dir, core.PermissionModeDefault, "")
 	if listed := executeTool(t, app, session.ID, "memory", `{"action":"list"}`); listed.Approval != nil || listed.ToolResultMessage == nil {
 		t.Fatalf("list = %+v", listed)

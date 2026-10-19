@@ -2,6 +2,7 @@ package daemonclient
 
 import (
 	"context"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -10,7 +11,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (c *Client) ListMemories(ctx context.Context, filter core.MemoryFilter) ([]core.MemoryEntry, error) {
+func (c *Client) ListMemories(ctx context.Context, filter memory.Filter) ([]memory.Entry, error) {
 	values := url.Values{}
 	if strings.TrimSpace(string(filter.Scope)) != "" {
 		values.Set("scope", strings.TrimSpace(string(filter.Scope)))

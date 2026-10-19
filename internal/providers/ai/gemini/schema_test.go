@@ -7,6 +7,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	deliverymodule "github.com/Suren878/matrixclaw/internal/modules/delivery"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	storagemodule "github.com/Suren878/matrixclaw/internal/modules/storage"
@@ -90,7 +91,7 @@ func registeredToolDefinitions(t *testing.T) []providers.ToolDefinition {
 		tools.NewShellExecutors(app),
 		core.TodoToolExecutors(app),
 		core.AwaitToolExecutors(app),
-		core.MemoryToolExecutors(app),
+		{core.NewSessionSearchTool(app), memory.NewTool(nil)},
 		core.AgentToolExecutors(app),
 		geo.NewOSMGeoExecutors(geo.NewOSMService(geo.OSMConfig{})),
 		skills.ToolExecutors(nil),

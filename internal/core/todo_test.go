@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -105,7 +106,7 @@ func TestSubagentsGetTheirOwnTodoList(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	ctx := context.Background()
-	app.SetTools(tools.NewRegistry(append(core.TodoToolExecutors(app), core.MemoryToolExecutors(app)...)...))
+	app.SetTools(tools.NewRegistry(append(core.TodoToolExecutors(app), memory.NewTool(memory.New(db, nil)))...))
 	var requests []providers.Request
 	app.SetSessionLLMs(scriptedLLMs(&requests,
 		todoWriteCall("call_child", `[{"content":"Scan the repo","status":"completed"}]`),

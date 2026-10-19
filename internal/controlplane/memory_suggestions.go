@@ -2,9 +2,8 @@ package controlplane
 
 import (
 	"context"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 // The memory entries session reviews suggested, which runs see once the
@@ -37,8 +36,8 @@ func (d *Dispatcher) handleMemorySuggestions(ctx context.Context, r Route) (Resu
 	return d.memorySuggestionsPicker(ctx)
 }
 
-func (d *Dispatcher) memorySuggestions(ctx context.Context) ([]core.MemoryEntry, error) {
-	return d.daemon.ListMemories(ctx, core.MemoryFilter{Pending: true, Limit: 50})
+func (d *Dispatcher) memorySuggestions(ctx context.Context) ([]memory.Entry, error) {
+	return d.daemon.ListMemories(ctx, memory.Filter{Pending: true, Limit: 50})
 }
 
 func (d *Dispatcher) memorySuggestionsPicker(ctx context.Context) (Result, error) {
@@ -77,8 +76,8 @@ func (d *Dispatcher) memorySuggestionPicker(ctx context.Context, id string) (Res
 	return d.memorySuggestionsPicker(ctx)
 }
 
-func memorySuggestionScope(entry core.MemoryEntry) string {
-	if entry.Scope == core.MemoryScopeProject && strings.TrimSpace(entry.WorkingDir) != "" {
+func memorySuggestionScope(entry memory.Entry) string {
+	if entry.Scope == memory.ScopeProject && strings.TrimSpace(entry.WorkingDir) != "" {
 		return "project " + entry.WorkingDir
 	}
 	return string(entry.Scope)

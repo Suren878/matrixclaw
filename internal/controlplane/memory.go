@@ -3,9 +3,8 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"strings"
-
-	"github.com/Suren878/matrixclaw/internal/core"
 )
 
 // A scope to list is the value of /memory.
@@ -15,7 +14,7 @@ func (d *Dispatcher) handleMemory(ctx context.Context, r Route) (Result, error) 
 	if r.Verb.words != "" {
 		return d.handleMemorySuggestions(ctx, r)
 	}
-	filter := core.MemoryFilter{
+	filter := memory.Filter{
 		Scope:      memoryScopeArg(r.Value),
 		WorkingDir: d.workingDir,
 		Limit:      50,
@@ -27,20 +26,20 @@ func (d *Dispatcher) handleMemory(ctx context.Context, r Route) (Result, error) 
 	return Result{Screen: memoryInfoData(entries)}, nil
 }
 
-func memoryScopeArg(args string) core.MemoryScope {
-	switch core.MemoryScope(strings.ToLower(strings.TrimSpace(args))) {
-	case core.MemoryScopeGlobal:
-		return core.MemoryScopeGlobal
-	case core.MemoryScopeUser:
-		return core.MemoryScopeUser
-	case core.MemoryScopeProject:
-		return core.MemoryScopeProject
+func memoryScopeArg(args string) memory.Scope {
+	switch memory.Scope(strings.ToLower(strings.TrimSpace(args))) {
+	case memory.ScopeGlobal:
+		return memory.ScopeGlobal
+	case memory.ScopeUser:
+		return memory.ScopeUser
+	case memory.ScopeProject:
+		return memory.ScopeProject
 	default:
 		return ""
 	}
 }
 
-func memoryInfoData(entries []core.MemoryEntry) InfoData {
+func memoryInfoData(entries []memory.Entry) InfoData {
 	rows := make([]InfoRow, 0, len(entries)+1)
 	rows = append(rows, InfoRow{Label: "Entries", Value: fmt.Sprintf("%d", len(entries))})
 	for _, entry := range entries {
@@ -49,7 +48,7 @@ func memoryInfoData(entries []core.MemoryEntry) InfoData {
 			label += "/" + strings.TrimSpace(entry.Key)
 		}
 		if label == "" {
-			label = string(core.MemoryScopeGlobal)
+			label = string(memory.ScopeGlobal)
 		}
 		rows = append(rows, InfoRow{Label: label, Value: strings.TrimSpace(entry.Content)})
 	}
@@ -60,7 +59,7 @@ func memoryInfoData(entries []core.MemoryEntry) InfoData {
 	}
 }
 
-func memoryInfoText(entries []core.MemoryEntry) string {
+func memoryInfoText(entries []memory.Entry) string {
 	if len(entries) == 0 {
 		return "No memory entries."
 	}
@@ -68,7 +67,7 @@ func memoryInfoText(entries []core.MemoryEntry) string {
 	for _, entry := range entries {
 		label := strings.TrimSpace(string(entry.Scope))
 		if label == "" {
-			label = string(core.MemoryScopeGlobal)
+			label = string(memory.ScopeGlobal)
 		}
 		if strings.TrimSpace(entry.Key) != "" {
 			label += "/" + strings.TrimSpace(entry.Key)

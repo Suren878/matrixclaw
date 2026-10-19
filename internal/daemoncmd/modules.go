@@ -11,6 +11,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/externalagents/claudecode"
 	"github.com/Suren878/matrixclaw/internal/lsp"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/modules"
 	browsermodule "github.com/Suren878/matrixclaw/internal/modules/browser"
 	deliverymodule "github.com/Suren878/matrixclaw/internal/modules/delivery"
@@ -37,6 +38,7 @@ type daemonModules struct {
 
 type moduleDeps struct {
 	app        *core.Core
+	memory     *memory.Service
 	automation *automation.Service
 	runtime    *localruntime.Runtime
 	storage    *localstorage.Module
@@ -62,7 +64,7 @@ func buildModules(deps moduleDeps) (daemonModules, error) {
 	base = append(base, tools.NewShellExecutors(app)...)
 	base = append(base, core.TodoToolExecutors(app)...)
 	base = append(base, core.AwaitToolExecutors(app)...)
-	base = append(base, core.MemoryToolExecutors(app)...)
+	base = append(base, core.NewSessionSearchTool(app), memory.NewTool(deps.memory))
 	base = append(base, core.CheckpointToolExecutors(app)...)
 	base = append(base, core.GoalToolExecutors(app)...)
 	base = append(base, core.AgentToolExecutors(app)...)

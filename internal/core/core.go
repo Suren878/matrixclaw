@@ -13,6 +13,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/ids"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/sandbox"
 )
 
@@ -31,6 +32,7 @@ type Core struct {
 	tools           ToolExecutor
 	lspAvailable    func(workingDir string) bool
 	skillsContext   SkillsPromptContextProvider
+	memory          Memory
 	runtimeStatus   RuntimeStatusContextProvider
 	events          *eventBus
 	now             func() time.Time
@@ -101,6 +103,14 @@ type SkillsPromptContextProvider interface {
 	SkillsPromptContext(context.Context, SkillsPromptContextRequest) string
 }
 
+// Memory is the persistent memory native runs are shown and session reviews
+// suggest entries to.
+type Memory interface {
+	List(ctx context.Context, filter memory.Filter) ([]memory.Entry, error)
+	Create(ctx context.Context, entry memory.Entry) (memory.Entry, error)
+	PromptContext(ctx context.Context, workingDir string) (string, error)
+}
+
 type RuntimeStatusContextRequest struct {
 	SessionID  string
 	RunID      string
@@ -135,6 +145,8 @@ type Config struct {
 	ExternalAgents     *externalagents.Registry
 	ExternalAgentStore externalagents.AttachmentStore
 	SkillsContext      SkillsPromptContextProvider
+	// Memory is shown to native runs; nil shows none.
+	Memory Memory
 	// SkillLearning turns on session reviews, which file what they find with it.
 	SkillLearning SkillLearning
 	// PromptEnvironment is where native runs are told they work; without a
@@ -169,6 +181,7 @@ func New(cfg Config) *Core {
 		externalAgents: cfg.ExternalAgents,
 		externalStore:  cfg.ExternalAgentStore,
 		skillsContext:  cfg.SkillsContext,
+		memory:         cfg.Memory,
 		promptEnv:      cfg.PromptEnvironment,
 		sessionFiles:   strings.TrimSpace(cfg.SessionFiles),
 		worktrees:      cfg.Worktrees,

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/automation"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/modules"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
 	"github.com/Suren878/matrixclaw/internal/modules/voice/realtime"
@@ -25,6 +26,7 @@ type Deps struct {
 	Realtime   *realtime.Manager
 	Modules    Modules
 	Skills     *skills.Service
+	Memory     *memory.Service
 	Setup      *setup.Service
 	// Reload makes the running daemon follow setup.json.
 	Reload   func(context.Context) error

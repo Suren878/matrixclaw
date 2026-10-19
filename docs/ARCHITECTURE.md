@@ -35,7 +35,8 @@ flowchart LR
 | `internal/api` | HTTP API: one route table, auth, roles |
 | `internal/daemonclient` | Go client of the API, used by every Go client |
 | `internal/controlplane` | slash commands and screens for the terminal and Telegram |
-| `internal/core` | sessions, messages, runs, approvals, tasks, subagents, deliveries, memory, external-agent runs; the engine's port adapters |
+| `internal/core` | sessions, messages, runs, approvals, tasks, subagents, deliveries, external-agent runs; the engine's port adapters |
+| `internal/memory` | persistent memory entries and suggestions, the prompt's memory section and the `memory` tool |
 | `internal/agent` | the native agent engine (below) |
 | `internal/transcript` | message, part, finish and origin types shared by core, store, api and agent |
 | `internal/tools` | tool contract and the built-in file, shell and task tools |
@@ -656,7 +657,7 @@ Close() error
   call over its conversation tail (`agentcontext.TranscriptTail`, the summary
   rendering); proposed skills become quarantined drafts through
   `core.SkillLearning` (the skills module), proposed memory becomes pending
-  `memories` rows that runs do not see until the owner approves them on
+  `memories` rows (through `core.Memory`, the `internal/memory` service) that runs do not see until the owner approves them on
   `/memory pending`. No run, no gate; the call takes a model slot, counts in
   `executing` (shutdown cancels and waits for it) and is recorded as a
   `run_steps` row with stop reason `review` on the session's latest run. See

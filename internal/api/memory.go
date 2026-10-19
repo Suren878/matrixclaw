@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"net/http"
 
 	"github.com/Suren878/matrixclaw/internal/core"
@@ -11,8 +12,8 @@ func (s *Server) handleMemory(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	entries, err := s.Core.ListMemories(r.Context(), core.MemoryFilter{
-		Scope:      core.MemoryScope(r.URL.Query().Get("scope")),
+	entries, err := s.Memory.List(r.Context(), memory.Filter{
+		Scope:      memory.Scope(r.URL.Query().Get("scope")),
 		WorkingDir: r.URL.Query().Get("working_dir"),
 		Pending:    r.URL.Query().Get("pending") == "true",
 		Limit:      limit,
@@ -26,7 +27,7 @@ func (s *Server) handleMemory(w http.ResponseWriter, r *http.Request) {
 
 // handleMemoryApprove approves a memory entry a session review suggested.
 func (s *Server) handleMemoryApprove(w http.ResponseWriter, r *http.Request) {
-	if _, err := s.Core.ApproveMemory(r.Context(), r.PathValue("id")); err != nil {
+	if _, err := s.Memory.Approve(r.Context(), r.PathValue("id")); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -34,7 +35,7 @@ func (s *Server) handleMemoryApprove(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMemoryDelete(w http.ResponseWriter, r *http.Request) {
-	if err := s.Core.DeleteMemory(r.Context(), r.PathValue("id")); err != nil {
+	if err := s.Memory.Delete(r.Context(), r.PathValue("id")); err != nil {
 		writeError(w, err)
 		return
 	}

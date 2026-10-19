@@ -17,6 +17,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/lsp"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
@@ -87,6 +88,7 @@ func Run(ctx context.Context) error {
 	}
 	lifetime, stopLifetime := context.WithCancel(ctx)
 	defer stopLifetime()
+	memories := memory.New(sqliteStore, nil)
 	app := core.New(core.Config{
 		Store:              sqliteStore,
 		Lifetime:           lifetime,
@@ -94,6 +96,7 @@ func Run(ctx context.Context) error {
 		ExternalAgents:     externalRegistry,
 		ExternalAgentStore: sqliteStore,
 		SkillsContext:      skillsModule,
+		Memory:             memories,
 		SkillLearning:      skillsModule,
 		PromptEnvironment:  promptEnvironment(bootstrap),
 		SessionFiles:       sessionFilesRoot(bootstrap.DBPath),
@@ -112,6 +115,7 @@ func Run(ctx context.Context) error {
 	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
 	daemon, err := buildModules(moduleDeps{
 		app:        app,
+		memory:     memories,
 		automation: automationService,
 		runtime:    localRuntime,
 		storage:    storageModule,
@@ -134,6 +138,7 @@ func Run(ctx context.Context) error {
 		Realtime:   realtimeVoice,
 		Modules:    daemon.api,
 		Skills:     skillsModule.Service(),
+		Memory:     memories,
 		Setup:      bootstrap.SetupService,
 		Reload:     supervisor.Reload,
 		Restart:    supervisor.RestartDaemon,

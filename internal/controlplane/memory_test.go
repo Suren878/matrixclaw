@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"net/http"
 	"strings"
 	"testing"
@@ -10,7 +11,7 @@ import (
 
 func TestMemoryCommandListsDaemonMemories(t *testing.T) {
 	daemon := newFakeDaemon(t).on("GET /v1/memory", func(*http.Request) any {
-		return core.MemoryResponse{Memories: []core.MemoryEntry{{Scope: core.MemoryScopeGlobal, Key: "lang", Content: "Go"}}}
+		return core.MemoryResponse{Memories: []memory.Entry{{Scope: memory.ScopeGlobal, Key: "lang", Content: "Go"}}}
 	})
 
 	if result := daemon.run("/memory"); !isScreen[InfoData](result) || !strings.Contains(screenOf[InfoData](t, result).Text, "global/lang: Go") {
@@ -24,7 +25,7 @@ func TestMemoryPendingApprovesASuggestionForTheOwnerOnly(t *testing.T) {
 			if r.URL.Query().Get("pending") != "true" {
 				t.Errorf("listed %s, want the suggestions", r.URL.RawQuery)
 			}
-			return core.MemoryResponse{Memories: []core.MemoryEntry{{ID: "m1", Scope: core.MemoryScopeUser, Content: "Prefers pnpm.", Pending: true}}}
+			return core.MemoryResponse{Memories: []memory.Entry{{ID: "m1", Scope: memory.ScopeUser, Content: "Prefers pnpm.", Pending: true}}}
 		}).
 		on("POST /v1/memory/{id}/approve", func(*http.Request) any { return nil })
 

@@ -110,14 +110,6 @@ type SearchStore interface {
 	SearchMessages(ctx context.Context, filter SearchFilter) ([]SearchResult, error)
 }
 
-type MemoryStore interface {
-	CreateMemory(ctx context.Context, entry MemoryEntry) error
-	UpdateMemory(ctx context.Context, entry MemoryEntry) error
-	DeleteMemory(ctx context.Context, id string) error
-	GetMemory(ctx context.Context, id string) (MemoryEntry, error)
-	ListMemories(ctx context.Context, filter MemoryFilter) ([]MemoryEntry, error)
-}
-
 type ApprovalStore interface {
 	CreateApproval(ctx context.Context, approval Approval) error
 	GetApproval(ctx context.Context, approvalID string) (Approval, error)
@@ -149,7 +141,6 @@ type Store interface {
 	EngineStateStore
 	TodoStore
 	SearchStore
-	MemoryStore
 	ApprovalStore
 	PermissionRuleStore
 	FileCheckpointStore

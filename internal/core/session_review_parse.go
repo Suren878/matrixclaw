@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Suren878/matrixclaw/internal/memory"
 )
 
 // Limits on what a session review may propose; an item over them is dropped.
@@ -34,7 +36,7 @@ memories: at most 5 facts of one sentence each (at most 300 characters) worth kn
 
 // reviewInput is the review's user message: the session's skills, what is
 // remembered already and the conversation tail.
-func reviewInput(session Session, skills []ReviewedSkill, remembered []MemoryEntry, tail string) string {
+func reviewInput(session Session, skills []ReviewedSkill, remembered []memory.Entry, tail string) string {
 	var b strings.Builder
 	if len(skills) > 0 {
 		b.WriteString("Skills loaded in this session:\n")
@@ -61,7 +63,7 @@ func reviewInput(session Session, skills []ReviewedSkill, remembered []MemoryEnt
 // sessionReview is what a review proposes, validated.
 type sessionReview struct {
 	Skills   []SkillProposal
-	Memories []MemoryEntry
+	Memories []memory.Entry
 }
 
 // parseSessionReview reads the review's JSON reply, a fenced block too. A
@@ -111,9 +113,9 @@ func parseSessionReview(text string, loaded []ReviewedSkill, workingDir string) 
 		if content == "" || utf8.RuneCountInString(content) > reviewMemoryContentRunes || len(review.Memories) >= reviewMaxMemories {
 			continue
 		}
-		entry := MemoryEntry{Scope: MemoryScopeUser, Content: content}
-		if strings.EqualFold(strings.TrimSpace(item.Scope), string(MemoryScopeProject)) && workingDir != "" {
-			entry.Scope, entry.WorkingDir = MemoryScopeProject, workingDir
+		entry := memory.Entry{Scope: memory.ScopeUser, Content: content}
+		if strings.EqualFold(strings.TrimSpace(item.Scope), string(memory.ScopeProject)) && workingDir != "" {
+			entry.Scope, entry.WorkingDir = memory.ScopeProject, workingDir
 		}
 		review.Memories = append(review.Memories, entry)
 	}

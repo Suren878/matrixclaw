@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"log"
 
 	"github.com/Suren878/matrixclaw/internal/agent/prompt"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -23,7 +24,7 @@ type corePrompts struct {
 func (p *corePrompts) System(ctx context.Context, history []transcript.Message) (string, string) {
 	assistant := p.c.assistantProfile()
 	if !p.turn.Subagent {
-		p.memory = p.c.MemoryPromptContext(ctx, p.turn.WorkingDir)
+		p.memory, _ = p.c.memoryPrompt(ctx, p.turn.WorkingDir)
 	}
 	p.toolIDs = p.c.nativeStatusToolIDs(p.turn)
 	facts := p.c.readRunFacts(ctx, p.turn)
@@ -45,7 +46,7 @@ func (p *corePrompts) Context(ctx context.Context) string {
 		return prompt.JoinSections(sections...)
 	}
 	sections = append(sections, p.c.goalPrompt(ctx, p.turn), p.c.nativeStatusPrompt(ctx, p.turn, p.toolIDs))
-	if memory := p.c.MemoryPromptContext(ctx, p.turn.WorkingDir); memory != p.memory {
+	if memory, ok := p.c.memoryPrompt(ctx, p.turn.WorkingDir); ok && memory != p.memory {
 		sections = append(sections, memoryChangedPrompt(memory))
 	}
 	return prompt.JoinSections(sections...)
@@ -59,6 +60,20 @@ func modelPrompt(model string) string {
 		return ""
 	}
 	return "You are running on " + model + ". Earlier replies in this conversation may have come from other models; when asked which model you are, name this one."
+}
+
+// memoryPrompt is the memory section of a run in workingDir; ok is false
+// when memory cannot be read, which is logged.
+func (c *Core) memoryPrompt(ctx context.Context, workingDir string) (string, bool) {
+	if c.memory == nil {
+		return "", true
+	}
+	memory, err := c.memory.PromptContext(ctx, workingDir)
+	if err != nil {
+		log.Printf("core: read memory for the prompt: %v", err)
+		return "", false
+	}
+	return memory, true
 }
 
 func memoryChangedPrompt(memory string) string {

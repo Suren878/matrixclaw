@@ -2,6 +2,7 @@ package core
 
 import (
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -27,7 +28,7 @@ type SearchResponse struct {
 }
 
 type MemoryResponse struct {
-	Memories []MemoryEntry `json:"memories"`
+	Memories []memory.Entry `json:"memories"`
 }
 
 type UpdateSessionPermissionModeRequest struct {

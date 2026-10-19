@@ -3,11 +3,13 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -54,14 +56,16 @@ func twoStepRun(t *testing.T, app *core.Core, db *store.SQLiteStore, suffix stri
 
 func TestMemoryWrittenDuringARunReachesTheModelAsAContextNote(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	if _, err := app.CreateMemory(context.Background(), core.MemoryEntry{Scope: core.MemoryScopeGlobal, Content: "prefers tabs"}); err != nil {
+	memories := memory.New(db, nil)
+	app := core.New(core.Config{Store: db, Memory: memories})
+	if _, err := memories.Create(context.Background(), memory.Entry{Scope: memory.ScopeGlobal, Content: "prefers tabs"}); err != nil {
 		t.Fatal(err)
 	}
 
 	requests := twoStepRun(t, app, db, "memory", func(ctx context.Context, _ string) error {
-		_, err := app.CreateMemory(ctx, core.MemoryEntry{Scope: core.MemoryScopeGlobal, Content: "uses Go 1.26"})
+		_, err := memories.Create(ctx, memory.Entry{Scope: memory.ScopeGlobal, Content: "uses Go 1.26"})
 		return err
 	})
 
@@ -184,5 +188,38 @@ func TestContextNoteLeavesOutAFinishedListOfAnEarlierChain(t *testing.T) {
 	}
 	if !noted("open_list", []todo.Item{{Content: "Fix the bug", Status: todo.Pending}}) {
 		t.Fatal("an earlier chain's open list is missing from the context note")
+	}
+}
+
+// failingMemory fails to read memory once broken.
+type failingMemory struct {
+	*memory.Service
+	broken bool
+}
+
+func (m *failingMemory) PromptContext(ctx context.Context, workingDir string) (string, error) {
+	if m.broken {
+		return "", errors.New("memory unreadable")
+	}
+	return m.Service.PromptContext(ctx, workingDir)
+}
+
+func TestUnreadableMemoryIsNotReportedAsRemoved(t *testing.T) {
+	t.Parallel()
+	db, cleanup := newCrashRecoveryStore(t)
+	defer cleanup()
+	memories := &failingMemory{Service: memory.New(db, nil)}
+	app := core.New(core.Config{Store: db, Memory: memories})
+	if _, err := memories.Create(context.Background(), memory.Entry{Content: "prefers tabs"}); err != nil {
+		t.Fatal(err)
+	}
+
+	requests := twoStepRun(t, app, db, "memory_broken", func(context.Context, string) error {
+		memories.broken = true
+		return nil
+	})
+
+	if last := requests[1].Messages[len(requests[1].Messages)-1]; strings.Contains(last.Content, "Memory changed") {
+		t.Fatalf("second request ends with %+v", last)
 	}
 }
