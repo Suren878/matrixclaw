@@ -1,13 +1,13 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -104,28 +104,6 @@ func (c *Core) acceptUnderGate(ctx context.Context, session Session, input Handl
 		next.wake = active.ID
 	}
 	return result, next, nil
-}
-
-// deliverRunToSteerer delivers the run a message steers to the address it came
-// from as well, unless the run is delivered there already.
-func (c *Core) deliverRunToSteerer(ctx context.Context, run Run, input HandleMessageInput, text string, parts []transcript.MessagePart) error {
-	if !input.ClientCapabilities.ReceivesDeliveries {
-		return nil
-	}
-	delivery, ok, err := c.prepareSessionRunDelivery(run, text, parts, input.Client, input.ExternalKey, deliveryTo{input.DeliveryAddress, input.ReplyOnce})
-	if err != nil || !ok {
-		return err
-	}
-	existing, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{Client: delivery.Client, ExternalKey: delivery.ExternalKey, RunID: run.ID, Type: ClientDeliveryTypeRun})
-	if err != nil {
-		return err
-	}
-	for _, other := range existing {
-		if bytes.Equal(other.Address, delivery.Address) {
-			return nil
-		}
-	}
-	return c.store.CreateClientDelivery(ctx, delivery)
 }
 
 func messagePartsHaveUserContent(parts []transcript.MessagePart) bool {
@@ -400,4 +378,60 @@ func (c *Core) rejectRunApprovals(ctx context.Context, run Run, errText string) 
 		})
 	}
 	return nil
+}
+
+type activeRun struct {
+	cancel context.CancelCauseFunc
+}
+
+func (c *Core) activeRunContext(parent context.Context, runID string) (context.Context, func(), bool) {
+	if runID == "" {
+		return parent, func() {}, true
+	}
+
+	ctx, cancel := context.WithCancelCause(parent)
+	active := &activeRun{cancel: cancel}
+	c.mu.Lock()
+	if c.activeRuns[runID] != nil {
+		c.mu.Unlock()
+		cancel(nil)
+		return parent, func() {}, false
+	}
+	delete(c.scheduledRuns, runID)
+	c.activeRuns[runID] = active
+	c.mu.Unlock()
+
+	return ctx, func() {
+		c.mu.Lock()
+		if c.activeRuns[runID] == active {
+			delete(c.activeRuns, runID)
+		}
+		c.mu.Unlock()
+		cancel(nil)
+	}, true
+}
+
+func (c *Core) runIsActive(runID string) bool {
+	if runID == "" {
+		return false
+	}
+	c.mu.RLock()
+	active := c.activeRuns[runID]
+	c.mu.RUnlock()
+	return active != nil
+}
+
+// cancelActiveRun stops the run's executor with agent.ErrCanceled as the cause,
+// which tells a cancel from an interruption.
+func (c *Core) cancelActiveRun(runID string) {
+	if runID == "" {
+		return
+	}
+
+	c.mu.RLock()
+	active := c.activeRuns[runID]
+	c.mu.RUnlock()
+	if active != nil && active.cancel != nil {
+		active.cancel(agent.ErrCanceled)
+	}
 }

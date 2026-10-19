@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"slices"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -175,64 +174,6 @@ func (c *Core) recoverSubagentTasks(ctx context.Context) error {
 		}
 	}
 	return errors.Join(errs...)
-}
-
-// waitRunEnd returns once the run has ended and what follows its end (its
-// subagent task's end among them) is done, or with ctx's error.
-func (c *Core) waitRunEnd(ctx context.Context, runID string) error {
-	for {
-		ended := make(chan struct{})
-		c.mu.Lock()
-		c.runEnds[runID] = append(c.runEnds[runID], ended)
-		c.mu.Unlock()
-		run, err := c.store.GetRun(ctx, runID)
-		c.mu.Lock()
-		done := err != nil || run.Status.Terminal() && c.runsEnding[runID] == 0
-		c.mu.Unlock()
-		if done {
-			c.forgetRunEnd(runID, ended)
-			return err
-		}
-		select {
-		case <-ended:
-		case <-ctx.Done():
-			c.forgetRunEnd(runID, ended)
-			return ctx.Err()
-		}
-	}
-}
-
-// beginRunEnd counts a transition that may end the run until endRunEnd.
-func (c *Core) beginRunEnd(runID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.runsEnding[runID]++
-}
-
-// endRunEnd ends what beginRunEnd counted and, once no ending of the run is
-// in progress, wakes its waiters to look again.
-func (c *Core) endRunEnd(runID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.runsEnding[runID]--; c.runsEnding[runID] > 0 {
-		return
-	}
-	delete(c.runsEnding, runID)
-	for _, ended := range c.runEnds[runID] {
-		close(ended)
-	}
-	delete(c.runEnds, runID)
-}
-
-func (c *Core) forgetRunEnd(runID string, ended chan struct{}) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	waiters := slices.DeleteFunc(c.runEnds[runID], func(ch chan struct{}) bool { return ch == ended })
-	if len(waiters) == 0 {
-		delete(c.runEnds, runID)
-		return
-	}
-	c.runEnds[runID] = waiters
 }
 
 // approvalAudience is the session and run whose clients hear of the approval:

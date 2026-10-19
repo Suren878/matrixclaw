@@ -1,9 +1,13 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/textutil"
+	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
 const (
@@ -129,4 +133,67 @@ func (c *Core) finishClientDelivery(ctx context.Context, deliveryID string, stat
 		return fmt.Errorf("%w: store not configured", ErrExecutionUnavailable)
 	}
 	return c.store.FinishClientDelivery(ctx, deliveryID, status, errText, c.now().UTC())
+}
+
+func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []transcript.MessagePart, client string, externalKey string, to deliveryTo) (ClientDelivery, bool, error) {
+	if client == "" || externalKey == "" {
+		return ClientDelivery{}, false, nil
+	}
+	delivery := ClientDelivery{
+		Type:        ClientDeliveryTypeRun,
+		Client:      client,
+		ExternalKey: externalKey,
+		SessionID:   run.SessionID,
+		RunID:       run.ID,
+		Summary:     sessionRunDeliverySummary(text, parts),
+		Address:     cloneRawMessage(to.Address),
+		ReplyOnce:   to.ReplyOnce,
+		Status:      ClientDeliveryStatusPending,
+	}
+	prepared, err := c.prepareClientDelivery(delivery)
+	if err != nil {
+		return ClientDelivery{}, false, err
+	}
+	return prepared, true, nil
+}
+
+func sessionRunDeliverySummary(text string, parts []transcript.MessagePart) string {
+	summary := strings.Join(strings.Fields(text), " ")
+	if summary == "" {
+		for _, part := range parts {
+			if part.Text == nil {
+				continue
+			}
+			summary = strings.Join(strings.Fields(part.Text.Text), " ")
+			if summary != "" {
+				break
+			}
+		}
+	}
+	if summary == "" {
+		summary = "User message"
+	}
+	return textutil.Clip(summary, 240, "...")
+}
+
+// deliverRunToSteerer delivers the run a message steers to the address it came
+// from as well, unless the run is delivered there already.
+func (c *Core) deliverRunToSteerer(ctx context.Context, run Run, input HandleMessageInput, text string, parts []transcript.MessagePart) error {
+	if !input.ClientCapabilities.ReceivesDeliveries {
+		return nil
+	}
+	delivery, ok, err := c.prepareSessionRunDelivery(run, text, parts, input.Client, input.ExternalKey, deliveryTo{input.DeliveryAddress, input.ReplyOnce})
+	if err != nil || !ok {
+		return err
+	}
+	existing, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{Client: delivery.Client, ExternalKey: delivery.ExternalKey, RunID: run.ID, Type: ClientDeliveryTypeRun})
+	if err != nil {
+		return err
+	}
+	for _, other := range existing {
+		if bytes.Equal(other.Address, delivery.Address) {
+			return nil
+		}
+	}
+	return c.store.CreateClientDelivery(ctx, delivery)
 }
