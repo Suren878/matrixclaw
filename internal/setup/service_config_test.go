@@ -260,3 +260,27 @@ func TestSkillsReviewRejectsBadSettings(t *testing.T) {
 func ptr[T any](value T) *T {
 	return &value
 }
+
+func TestExpandHome(t *testing.T) {
+	t.Setenv("HOME", "/home/u")
+	for in, want := range map[string]string{
+		"~":             "/home/u",
+		"~/.local/x.db": "/home/u/.local/x.db",
+		"/abs/~/x":      "/abs/~/x",
+		"~other/x":      "~other/x",
+		"relative/x.db": "relative/x.db",
+		"":              "",
+	} {
+		if got := ExpandHome(in); got != want {
+			t.Errorf("ExpandHome(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestNormalizeConfigExpandsDBPath(t *testing.T) {
+	t.Setenv("HOME", "/home/u")
+	cfg := normalizeConfig(Config{Daemon: DaemonConfig{DBPath: " ~/state/m.db "}})
+	if cfg.Daemon.DBPath != "/home/u/state/m.db" {
+		t.Fatalf("db_path = %q", cfg.Daemon.DBPath)
+	}
+}

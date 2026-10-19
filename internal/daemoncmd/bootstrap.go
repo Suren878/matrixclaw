@@ -116,7 +116,7 @@ func loadBootstrap() (bootstrapConfig, error) {
 		cfg.Addr = addr
 	}
 	if dbPath := strings.TrimSpace(os.Getenv("MATRIXCLAW_DB_PATH")); dbPath != "" {
-		cfg.DBPath = dbPath
+		cfg.DBPath = setup.ExpandHome(dbPath)
 	}
 	if timezone := strings.TrimSpace(os.Getenv("MATRIXCLAW_TIMEZONE")); timezone != "" {
 		cfg.Timezone = timezone

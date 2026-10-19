@@ -14,13 +14,9 @@ func (m *systemdUserDaemonManager) Restart(ctx context.Context, setupPath string
 		return summary, err
 	}
 
-	if _, err := m.lookPath("systemctl"); err != nil {
-		daemonBin, resolveErr := m.resolveDaemon()
-		if resolveErr != nil {
-			return summary, fmt.Errorf("resolve matrixclawd binary: %w", resolveErr)
-		}
-		if startErr := m.startDirect(ctx, daemonBin, setupPath, cfg); startErr != nil {
-			return summary, startErr
+	if !m.systemdUsable(ctx) {
+		if err := m.restartDirect(ctx, setupPath, cfg); err != nil {
+			return summary, err
 		}
 		return m.Inspect(ctx, setupPath, cfg)
 	}
@@ -35,6 +31,13 @@ func (m *systemdUserDaemonManager) Restart(ctx context.Context, setupPath string
 	}
 	if strings.TrimSpace(usr.HomeDir) == "" {
 		return summary, errors.New("resolve HOME for systemd user service")
+	}
+
+	// A daemon the unit does not run would keep the data lock from the unit's.
+	if m.healthCheck(ctx, cfg.Daemon.HTTPAddr) == nil && m.runner.Run(ctx, "systemctl", "--user", "is-active", "--quiet", daemonUnitName) != nil {
+		if err := m.stopDirect(ctx, cfg); err != nil {
+			return summary, err
+		}
 	}
 
 	warnings := []string{}

@@ -29,13 +29,14 @@ func runDoctorCommand(stdout io.Writer, stderr io.Writer, binaryName string, ser
 	_, _ = fmt.Fprintf(stdout, "%s: setup config version: ok (%d)\n", binaryName, appsetup.CurrentVersion)
 	_, _ = fmt.Fprintf(stdout, "%s: api: %s\n", binaryName, daemonclient.BaseURL(cfg.Daemon.HTTPAddr))
 	if strings.TrimSpace(cfg.Daemon.APIToken) == "" {
-		_, _ = fmt.Fprintf(stdout, "%s: ERROR api auth: missing setup daemon api_token\n", binaryName)
-		issues++
+		_, _ = fmt.Fprintf(stdout, "%s: api auth: api_token is created on first daemon start\n", binaryName)
 	} else {
 		_, _ = fmt.Fprintf(stdout, "%s: api auth: ok\n", binaryName)
 	}
 	_, _ = fmt.Fprintf(stdout, "%s: database: %s\n", binaryName, cfg.Daemon.DBPath)
-	if _, err := store.CheckSQLite(cfg.Daemon.DBPath); err != nil {
+	if _, statErr := os.Stat(cfg.Daemon.DBPath); os.IsNotExist(statErr) {
+		_, _ = fmt.Fprintf(stdout, "%s: database schema: created on first daemon start\n", binaryName)
+	} else if _, err := store.CheckSQLite(cfg.Daemon.DBPath); err != nil {
 		_, _ = fmt.Fprintf(stdout, "%s: ERROR database: %v\n", binaryName, err)
 		issues++
 	} else {

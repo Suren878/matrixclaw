@@ -11,7 +11,11 @@ import (
 	appsetup "github.com/Suren878/matrixclaw/internal/setup"
 )
 
-func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Service, args []string) int {
+func runTUICommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service, args []string) int {
+	if len(args) > 0 && isHelpArg(args[0]) {
+		printTUIUsage(stdout, binaryName)
+		return 0
+	}
 	cfg, err := service.Load()
 	if err != nil {
 		return handleSetupReadError(stderr, binaryName, service, "tui", err)
@@ -43,4 +47,9 @@ func runTUICommand(stderr io.Writer, binaryName string, service *appsetup.Servic
 		return 1
 	}
 	return 0
+}
+
+func printTUIUsage(w io.Writer, binaryName string) {
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintf(w, "  %s tui [WORKDIR]  Open terminal chat for the current or given directory\n", binaryName)
 }

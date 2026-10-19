@@ -296,8 +296,9 @@ temporary files until you save them. See [Storage](docs/STORAGE.md).
 
 ## Configuration
 
-Setup is saved to `~/.config/matrixclaw/setup.json` (the OS user config
-directory; override with `MATRIXCLAW_SETUP_PATH`). State, including the SQLite
+Setup is saved to `~/.config/matrixclaw/setup.json` (`~/Library/Application
+Support/matrixclaw/setup.json` on macOS, the OS user config directory;
+override with `MATRIXCLAW_SETUP_PATH`). State, including the SQLite
 database, lives in `~/.local/state/matrixclaw`. Edit setup with
 `matrixclaw setup` or from `/modules` and `/provider` inside a session; see
 [`setup.example.json`](setup.example.json) for the file layout.

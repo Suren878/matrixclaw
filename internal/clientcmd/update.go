@@ -25,6 +25,15 @@ func runUpdateCommand(stdout io.Writer, stderr io.Writer, binaryName string, arg
 		printUpdateUsage(stdout, binaryName)
 		return 0
 	}
+	action := "check"
+	if len(args) > 0 {
+		action = strings.TrimSpace(args[0])
+	}
+	if action != "check" && action != "install" {
+		_, _ = fmt.Fprintf(stderr, "%s: update: unknown subcommand %q\n", binaryName, action)
+		printUpdateUsage(stderr, binaryName)
+		return 2
+	}
 	update, ok, err := checkLatestUpdate(context.Background(), version.String())
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: update: %v\n", binaryName, err)
@@ -34,16 +43,12 @@ func runUpdateCommand(stdout io.Writer, stderr io.Writer, binaryName string, arg
 		_, _ = fmt.Fprintf(stdout, "%s: already up to date (%s)\n", binaryName, version.String())
 		return 0
 	}
-	if len(args) == 0 || strings.TrimSpace(args[0]) == "check" {
+	if action == "check" {
 		_, _ = fmt.Fprintf(stdout, "%s: update available: %s -> %s\n", binaryName, update.Current, update.Latest)
 		if update.URL != "" {
 			_, _ = fmt.Fprintf(stdout, "%s: release: %s\n", binaryName, update.URL)
 		}
 		return 0
-	}
-	if strings.TrimSpace(args[0]) != "install" {
-		printUpdateUsage(stdout, binaryName)
-		return 2
 	}
 	var installOut bytes.Buffer
 	if err := installUpdate(context.Background(), update.Latest, &installOut, stderr); err != nil {

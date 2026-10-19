@@ -12,7 +12,7 @@ import (
 func normalizeConfig(cfg Config) Config {
 	cfg.Assistant = normalizeAssistantConfig(cfg.Assistant)
 	cfg.Daemon.HTTPAddr = strings.TrimSpace(cfg.Daemon.HTTPAddr)
-	cfg.Daemon.DBPath = strings.TrimSpace(cfg.Daemon.DBPath)
+	cfg.Daemon.DBPath = ExpandHome(strings.TrimSpace(cfg.Daemon.DBPath))
 	cfg.Daemon.Timezone = strings.TrimSpace(cfg.Daemon.Timezone)
 	cfg.Daemon.APIToken = strings.TrimSpace(cfg.Daemon.APIToken)
 	if cfg.Daemon.Timezone == "" {

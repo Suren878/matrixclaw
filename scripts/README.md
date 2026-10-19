@@ -23,6 +23,9 @@ install.sh [--version TAG] [--install-dir DIR] [--no-setup] [--from-source] [--v
 - Environment: `MATRIXCLAW_REPO`, `MATRIXCLAW_VERSION`,
   `MATRIXCLAW_INSTALL_DIR`, `MATRIXCLAW_RUN_SETUP=0` (skip setup).
 
+Without a controlling terminal (a pipe in CI or a container) setup is skipped
+with a note to run `matrixclaw setup` later.
+
 After setup, plain `matrixclaw` opens the TUI and starts the daemon when
 needed.
 
@@ -47,5 +50,10 @@ install_voice_runtime.sh [--piper] [--whisper] [--supertonic] [--all] [--no-syst
 uninstall.sh [--purge] [--yes] [--install-dir DIR]
 ```
 
-`--purge` also removes `~/.config/matrixclaw` and `~/.local/state/matrixclaw`
-(`MATRIXCLAW_CONFIG_DIR`, `MATRIXCLAW_STATE_DIR`); `--yes` skips its prompt.
+It stops the daemon first (the user service, else through
+`matrixclaw service stop`) and exits 1 if one is still running. `--purge` also
+removes the config directory (`~/.config/matrixclaw`, on macOS `~/Library/Application
+Support/matrixclaw`; `XDG_CONFIG_HOME` is honoured on Linux) and
+`~/.local/state/matrixclaw` (`MATRIXCLAW_CONFIG_DIR`, `MATRIXCLAW_STATE_DIR`),
+plus a setup file moved by `MATRIXCLAW_SETUP_PATH`. `--yes` skips its prompt;
+without a terminal `--purge` requires it.

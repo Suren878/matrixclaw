@@ -46,6 +46,22 @@ func (m *systemdUserDaemonManager) waitForHealth(ctx context.Context, addr strin
 	return lastErr
 }
 
+// waitForDown returns once the daemon no longer answers its health check.
+func (m *systemdUserDaemonManager) waitForDown(ctx context.Context, addr string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for m.healthCheck(ctx, addr) == nil {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("daemon still answers on %s after %s", addr, timeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	return nil
+}
+
 func (m *systemdUserDaemonManager) ensureDaemonPortAvailable(ctx context.Context, addr string) error {
 	if m.healthCheck(ctx, addr) == nil {
 		return nil
@@ -95,11 +111,16 @@ func (m *systemdUserDaemonManager) healthCheck(ctx context.Context, addr string)
 }
 
 func (m *systemdUserDaemonManager) reloadLiveDaemon(ctx context.Context, cfg Config) error {
+	return m.adminPost(ctx, cfg, "reload")
+}
+
+// adminPost calls the running daemon's owner-only /v1/admin/<action>.
+func (m *systemdUserDaemonManager) adminPost(ctx context.Context, cfg Config, action string) error {
 	client := m.httpClient
 	if client == nil {
 		client = &http.Client{Timeout: 2 * time.Second}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, daemonReloadURL(cfg.Daemon.HTTPAddr), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, daemonAdminURL(cfg.Daemon.HTTPAddr, action), nil)
 	if err != nil {
 		return err
 	}
@@ -112,7 +133,7 @@ func (m *systemdUserDaemonManager) reloadLiveDaemon(ctx context.Context, cfg Con
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("reload status %d", resp.StatusCode)
+		return fmt.Errorf("%s status %d", action, resp.StatusCode)
 	}
 	var payload struct {
 		OK bool `json:"ok"`
@@ -121,7 +142,7 @@ func (m *systemdUserDaemonManager) reloadLiveDaemon(ctx context.Context, cfg Con
 		return err
 	}
 	if !payload.OK {
-		return errors.New("daemon reload returned not ok")
+		return fmt.Errorf("daemon %s returned not ok", action)
 	}
 	return nil
 }
@@ -171,13 +192,13 @@ func firstAvailableLoopbackHTTPAddr() string {
 	return "127.0.0.1:8080"
 }
 
-func daemonReloadURL(addr string) string {
+func daemonAdminURL(addr string, action string) string {
 	trimmed := strings.TrimSpace(addr)
 	if trimmed == "" {
-		return "http://127.0.0.1:8080/v1/admin/reload"
+		trimmed = "127.0.0.1:8080"
 	}
-	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
-		return strings.TrimRight(trimmed, "/") + "/v1/admin/reload"
+	if !strings.HasPrefix(trimmed, "http://") && !strings.HasPrefix(trimmed, "https://") {
+		trimmed = "http://" + trimmed
 	}
-	return "http://" + strings.TrimRight(trimmed, "/") + "/v1/admin/reload"
+	return strings.TrimRight(trimmed, "/") + "/v1/admin/" + action
 }

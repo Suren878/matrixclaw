@@ -17,6 +17,25 @@ voice_runtime=0
 release_tmp=""
 resolved_release_tag=""
 
+# setup_config_dir is the directory matrixclaw setup keeps its files in, as
+# the daemon resolves it: Go's os.UserConfigDir (macOS: ~/Library/Application
+# Support; elsewhere an absolute $XDG_CONFIG_HOME, else ~/.config).
+setup_config_dir() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "$home_dir/Library/Application Support/matrixclaw"
+  elif [[ "${XDG_CONFIG_HOME:-}" == /* ]]; then
+    echo "$XDG_CONFIG_HOME/matrixclaw"
+  else
+    echo "$home_dir/.config/matrixclaw"
+  fi
+}
+
+# has_tty succeeds when /dev/tty can really be opened; the node can exist
+# without a controlling terminal.
+has_tty() {
+  (exec < /dev/tty) 2>/dev/null
+}
+
 cleanup_release_tmp() {
   if [[ -n "${release_tmp:-}" ]]; then
     rm -rf "$release_tmp"
@@ -315,7 +334,7 @@ else
 fi
 
 echo "[3/4] Preparing local directories"
-mkdir -p "$home_dir/.config/matrixclaw" "$home_dir/.local/state/matrixclaw"
+mkdir -p "$(dirname "${MATRIXCLAW_SETUP_PATH:-$(setup_config_dir)/setup.json}")" "$home_dir/.local/state/matrixclaw"
 
 if [[ "$voice_runtime" == "1" ]]; then
   echo "[4/5] Preparing local voice runtime"
@@ -345,10 +364,10 @@ esac
 if [[ "$run_setup" == "1" ]]; then
   echo
   echo "Starting setup..."
-  if [[ -r /dev/tty ]]; then
+  if has_tty; then
     exec "$install_dir/matrixclaw" setup < /dev/tty
   fi
-  echo "install.sh: no interactive terminal available; run setup manually:"
+  echo "install.sh: no interactive terminal; run \`matrixclaw setup\` later:"
   echo "  $install_dir/matrixclaw setup"
   exit 0
 fi
