@@ -7,6 +7,8 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+
+	"github.com/Suren878/matrixclaw/internal/externalagents"
 )
 
 // KindAndMode is the kind and permission mode of the session the input
@@ -89,35 +91,59 @@ func (c *Core) ListSessions(ctx context.Context, filter SessionListFilter) ([]Se
 	if err != nil {
 		return nil, err
 	}
+	attachments := c.externalAttachments(ctx, sessions)
 	for i := range sessions {
-		sessions[i] = c.decorateSession(ctx, sessions[i])
+		sessions[i] = c.decorateSessionWith(ctx, sessions[i], attachments)
 	}
 	return sessions, nil
 }
 
-func (c *Core) GetSession(ctx context.Context, sessionID string) (Session, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return Session{}, fmt.Errorf("%w: session id is required", ErrInvalidInput)
+// externalAttachments are the attachments of the external agent sessions
+// among sessions, by session ID; none when they cannot be read.
+func (c *Core) externalAttachments(ctx context.Context, sessions []Session) map[string]externalagents.SessionAttachment {
+	if c.externalStore == nil {
+		return nil
 	}
-	session, err := c.store.GetSession(ctx, sessionID)
+	var ids []string
+	for _, session := range sessions {
+		if CoreSessionIsExternalAgent(session) {
+			ids = append(ids, session.ID)
+		}
+	}
+	list, err := c.externalStore.ListExternalAgentSessions(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	attachments := make(map[string]externalagents.SessionAttachment, len(list))
+	for _, attachment := range list {
+		attachments[attachment.SessionID] = attachment
+	}
+	return attachments
+}
+
+func (c *Core) GetSession(ctx context.Context, sessionID string) (Session, error) {
+	session, err := c.storedSession(ctx, sessionID)
 	if err != nil {
 		return Session{}, err
 	}
 	return c.decorateSession(ctx, session), nil
 }
 
-func (c *Core) RenameSession(ctx context.Context, input RenameSessionInput) (Session, error) {
-	sessionID := strings.TrimSpace(input.SessionID)
+// storedSession is the session sessionID names, as stored.
+func (c *Core) storedSession(ctx context.Context, sessionID string) (Session, error) {
+	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return Session{}, fmt.Errorf("%w: session id is required", ErrInvalidInput)
 	}
+	return c.store.GetSession(ctx, sessionID)
+}
+
+func (c *Core) RenameSession(ctx context.Context, input RenameSessionInput) (Session, error) {
 	title := strings.TrimSpace(input.Title)
 	if title == "" {
 		return Session{}, fmt.Errorf("%w: session title is required", ErrInvalidInput)
 	}
-
-	session, err := c.store.GetSession(ctx, sessionID)
+	session, err := c.storedSession(ctx, input.SessionID)
 	if err != nil {
 		return Session{}, err
 	}
@@ -130,11 +156,7 @@ func (c *Core) RenameSession(ctx context.Context, input RenameSessionInput) (Ses
 }
 
 func (c *Core) UpdateSessionPermissionMode(ctx context.Context, input UpdateSessionPermissionModeInput) (Session, error) {
-	sessionID := strings.TrimSpace(input.SessionID)
-	if sessionID == "" {
-		return Session{}, fmt.Errorf("%w: session id is required", ErrInvalidInput)
-	}
-	session, err := c.store.GetSession(ctx, sessionID)
+	session, err := c.storedSession(ctx, input.SessionID)
 	if err != nil {
 		return Session{}, err
 	}
@@ -319,11 +341,7 @@ func (c *Core) SessionProviderOptions() []SessionProviderOption {
 }
 
 func (c *Core) ModelsForSession(ctx context.Context, sessionID string) (string, string, []string, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return "", "", nil, fmt.Errorf("%w: session id is required", ErrInvalidInput)
-	}
-	session, err := c.store.GetSession(ctx, sessionID)
+	session, err := c.storedSession(ctx, sessionID)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -402,12 +420,21 @@ func (c *Core) externalAgentDisplayName(agentID string) string {
 }
 
 func (c *Core) decorateSession(ctx context.Context, session Session) Session {
-	session = c.decorateSessionLLM(session)
 	if !CoreSessionIsExternalAgent(session) || c.externalStore == nil {
-		return session
+		return c.decorateSessionLLM(session)
 	}
 	attachment, err := c.externalStore.GetExternalAgentSession(ctx, session.ID)
 	if err != nil {
+		return c.decorateSessionLLM(session)
+	}
+	return c.decorateSessionWith(ctx, session, map[string]externalagents.SessionAttachment{session.ID: attachment})
+}
+
+// decorateSessionWith decorates session with its attachment among attachments.
+func (c *Core) decorateSessionWith(ctx context.Context, session Session, attachments map[string]externalagents.SessionAttachment) Session {
+	session = c.decorateSessionLLM(session)
+	attachment, ok := attachments[session.ID]
+	if !ok || !CoreSessionIsExternalAgent(session) {
 		return session
 	}
 	session.ExternalAgentID = attachment.AgentID

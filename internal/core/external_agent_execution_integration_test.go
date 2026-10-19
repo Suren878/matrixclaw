@@ -231,3 +231,38 @@ func TestCancelingAnExternalRunInterruptsItsAgentAndSealsTheReply(t *testing.T) 
 		t.Fatalf("last message = %+v", last)
 	}
 }
+
+func TestListedSessionsCarryTheirExternalAgent(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := newCrashRecoveryStore(t)
+	defer cleanup()
+	runtime := &hangingExternalRuntime{}
+	registry, err := externalagents.NewRegistry(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := core.New(core.Config{Store: db, ExternalAgents: registry, ExternalAgentStore: db})
+	now := time.Now().UTC()
+	for _, session := range []core.Session{
+		{ID: "session-external", Title: "External", Kind: core.SessionKindExternalAgent, Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now},
+		{ID: "session-native", Title: "Native", Kind: core.SessionKindAssistant, Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now},
+	} {
+		if err := db.CreateSession(ctx, session); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.SaveExternalAgentSession(ctx, externalagents.SessionAttachment{SessionID: "session-external", AgentID: runtime.ID(), Model: "agent-model", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := app.ListSessions(ctx, core.SessionListFilter{})
+	if err != nil || len(sessions) != 2 {
+		t.Fatalf("sessions = %+v, %v", sessions, err)
+	}
+	for _, session := range sessions {
+		external := session.ID == "session-external"
+		if (session.ExternalAgentID == runtime.ID()) != external || (session.ModelID == "agent-model") != external {
+			t.Fatalf("session = %+v", session)
+		}
+	}
+}
