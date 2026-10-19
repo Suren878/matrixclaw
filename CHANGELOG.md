@@ -104,7 +104,8 @@ done.
   schema (`PRAGMA user_version`), keeping `matrixclaw.db.pre-v1` next to it,
   drops tables and columns nothing reads, then applies migrations 002-007.
   Installs older than v0.2.0 must upgrade through v0.2.0 first.
-- setup.json is converted once to version 4, keeping `setup.json.pre-v4`;
+- setup.json is converted to version 4 when the new daemon first starts (or
+  a setup change is saved), keeping `setup.json.pre-v4`;
   from then on unknown keys and alias values are refused with an error naming
   them.
 - Rollback: stop the daemon, restore `matrixclaw.db.pre-v1` (delete the

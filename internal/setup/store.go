@@ -32,7 +32,7 @@ func (s *FileStore) Load() (Config, error) {
 		return Config{}, err
 	}
 
-	data, err = s.upgradeV3(data)
+	data, err = convertV3(data)
 	if err != nil {
 		return Config{}, fmt.Errorf("%s: %w", s.path, err)
 	}
@@ -46,6 +46,11 @@ func (s *FileStore) Load() (Config, error) {
 func (s *FileStore) Save(cfg Config) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
+	}
+	if previous, err := os.ReadFile(s.path); err == nil && isVersion3(previous) {
+		if err := writeBackupOnce(s.path+".pre-v4", previous); err != nil {
+			return err
+		}
 	}
 	cfg = normalizeConfig(cfg)
 

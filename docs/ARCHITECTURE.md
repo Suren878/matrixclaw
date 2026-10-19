@@ -585,9 +585,10 @@ through read-only subagents.
   browser and voice providers, external agent ids, web search provider, MCP
   transport, sandbox mode), fails with an error naming the key. A file is never
   reinterpreted on read; there are no value aliases. A version 3 file (v0.2.0)
-  is converted to version 4 once on load (`internal/setup/legacy_v3.go`): the
-  original is kept as `setup.json.pre-v4`, the keys v0.2.0 still wrote are
-  dropped and alias values become canonical.
+  is read as version 4 (`internal/setup/legacy_v3.go`): the keys v0.2.0 still
+  wrote are dropped and alias values become canonical. Only the daemon's start
+  or a save writes the converted file, keeping the original as
+  `setup.json.pre-v4`, so a new client never breaks an older running daemon.
 - Every edit is `Service.Update(func(*Config) error)`: load, change,
   canonicalize, `Config.Validate` (structure only: no network, no env), save
   atomically under one lock. Provider edits, the session model switch and

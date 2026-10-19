@@ -60,6 +60,13 @@ func (s *Service) Load() (Config, error) {
 	return s.store.Load()
 }
 
+// Upgrade saves a version 3 setup.json as version 4; see FileStore.Upgrade.
+func (s *Service) Upgrade() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.store.Upgrade()
+}
+
 // Update applies change to the saved config, validates the result and saves
 // it under the service lock, so concurrent edits don't overwrite each other.
 func (s *Service) Update(change func(*Config) error) (Config, error) {

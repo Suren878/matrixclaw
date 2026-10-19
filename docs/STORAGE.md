@@ -7,7 +7,7 @@ that should outlive a chat turn.
 
 | Path (default) | What it is |
 |---|---|
-| `~/.config/matrixclaw/setup.json` | setup (`MATRIXCLAW_SETUP_PATH` moves it); written with mode 0600. A version 3 file from v0.2.0 is converted to version 4 on first load and the original kept as `setup.json.pre-v4` |
+| `~/.config/matrixclaw/setup.json` | setup (`MATRIXCLAW_SETUP_PATH` moves it); written with mode 0600. A version 3 file from v0.2.0 is read as version 4 and saved as such when the daemon starts or a setup change is saved, the original kept as `setup.json.pre-v4` |
 | `~/.config/matrixclaw/daemon.env` | environment for the user service, next to setup.json |
 | `~/.local/state/matrixclaw/matrixclaw.db` | SQLite database (`daemon.db_path` in setup.json, or `MATRIXCLAW_DB_PATH`, which wins) |
 

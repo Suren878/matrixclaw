@@ -49,6 +49,9 @@ func loadBootstrap() (bootstrapConfig, error) {
 	cfg.SetupPath = service.Path()
 	cfg.SetupService = service
 
+	if err := service.Upgrade(); err != nil {
+		return bootstrapConfig{}, fmt.Errorf("upgrade setup config %s: %w", service.Path(), err)
+	}
 	setupCfg, err := service.Load()
 	switch {
 	case errors.Is(err, setup.ErrConfigNotFound):

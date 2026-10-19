@@ -12,15 +12,11 @@ import (
 	"github.com/Suren878/matrixclaw/internal/providers"
 )
 
-// upgradeV3 converts a version 3 setup.json, which v0.2.0 read through
-// aliases, to version 4 once and returns the saved file; any other file is
-// returned as it is. The original is kept as <path>.pre-v4 (an existing copy
-// is kept), and a result that would not load leaves the file untouched.
-func (s *FileStore) upgradeV3(data []byte) ([]byte, error) {
-	var probe struct {
-		Version int `json:"version"`
-	}
-	if err := json.Unmarshal(data, &probe); err != nil || probe.Version != 3 {
+// convertV3 converts a version 3 setup.json, which v0.2.0 read through
+// aliases, to version 4 in memory; any other file is returned as it is. A
+// result that would not load is an error.
+func convertV3(data []byte) ([]byte, error) {
+	if !isVersion3(data) {
 		return data, nil
 	}
 	var doc map[string]any
@@ -33,17 +29,33 @@ func (s *FileStore) upgradeV3(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := decodeConfig(converted)
-	if err != nil {
+	if _, err := decodeConfig(converted); err != nil {
 		return nil, fmt.Errorf("convert version 3: %w", err)
 	}
-	if err := writeBackupOnce(s.path+".pre-v4", data); err != nil {
-		return nil, err
+	return converted, nil
+}
+
+func isVersion3(data []byte) bool {
+	var probe struct {
+		Version int `json:"version"`
 	}
-	if err := s.Save(cfg); err != nil {
-		return nil, err
+	return json.Unmarshal(data, &probe) == nil && probe.Version == 3
+}
+
+// Upgrade saves a version 3 file as version 4, keeping the original as
+// <path>.pre-v4 (an existing copy is kept). Only the daemon calls it: other
+// readers convert in memory, so a new client leaves an older running daemon's
+// file alone.
+func (s *FileStore) Upgrade() error {
+	data, err := os.ReadFile(s.path)
+	if err != nil || !isVersion3(data) {
+		return nil
 	}
-	return os.ReadFile(s.path)
+	cfg, err := s.Load()
+	if err != nil {
+		return err
+	}
+	return s.Save(cfg)
 }
 
 func writeBackupOnce(path string, data []byte) error {

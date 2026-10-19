@@ -206,8 +206,15 @@ func TestVersion3SetupFileIsConvertedOnce(t *testing.T) {
 	if err := os.WriteFile(path, []byte(v3SetupFile), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := NewFileStore(path).Load()
+	store := NewFileStore(path)
+	cfg, err := store.Load()
 	if err != nil {
+		t.Fatal(err)
+	}
+	if onDisk, _ := os.ReadFile(path); string(onDisk) != v3SetupFile {
+		t.Fatal("load rewrote the version 3 file")
+	}
+	if err := store.Upgrade(); err != nil {
 		t.Fatal(err)
 	}
 	modules := cfg.Modules
@@ -237,14 +244,32 @@ func TestVersion3SetupFileIsConvertedOnce(t *testing.T) {
 	if err := os.WriteFile(path+".pre-v4", []byte("earlier"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewFileStore(path).Load(); err != nil {
+	if err := store.Upgrade(); err != nil {
 		t.Fatal(err)
 	}
 	if again, _ := os.ReadFile(path); string(again) != string(saved) {
-		t.Fatal("a version 4 file was rewritten on load")
+		t.Fatal("a version 4 file was rewritten")
 	}
 	if kept, _ := os.ReadFile(path + ".pre-v4"); string(kept) != "earlier" {
 		t.Fatal("the existing backup was replaced")
+	}
+}
+
+func TestSavingOverAVersion3FileKeepsTheOriginal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "setup.json")
+	if err := os.WriteFile(path, []byte(v3SetupFile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := NewFileStore(path)
+	cfg, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if backup, err := os.ReadFile(path + ".pre-v4"); err != nil || string(backup) != v3SetupFile {
+		t.Fatalf("backup = %q, %v", backup, err)
 	}
 }
 
@@ -254,8 +279,8 @@ func TestVersion3SetupFileThatCannotConvertIsLeftAlone(t *testing.T) {
 	if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewFileStore(path).Load(); err == nil || !strings.Contains(err.Error(), "unknown keys wizard_state") {
-		t.Fatalf("load error = %v", err)
+	if err := NewFileStore(path).Upgrade(); err == nil || !strings.Contains(err.Error(), "unknown keys wizard_state") {
+		t.Fatalf("upgrade error = %v", err)
 	}
 	if after, _ := os.ReadFile(path); string(after) != file {
 		t.Fatal("the file changed")
