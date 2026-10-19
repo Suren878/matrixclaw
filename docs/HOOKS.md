@@ -221,7 +221,9 @@ A file whose language has a server installed (gopls, typescript-language-server,
 pyright or pylsp, rust-analyzer) and that lies in a project of that language
 is checked by the server: its errors, at most 20, and those the edit caused
 in up to five other files, such as the callers a changed signature broke.
-See [LSP.md](LSP.md) for the servers, timing and limits. Every other file,
+See [LSP.md](LSP.md) for the servers, timing and limits. Servers say nothing
+about formatting, so a Go file gopls checked is also checked for gofmt
+formatting. Every other file,
 and a file whose server is missing, still starting or silent, gets a
 built-in command check, each skipped when its tool is not installed:
 

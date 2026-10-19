@@ -1,10 +1,12 @@
 package hooks
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/format"
 	"os"
 	"path/filepath"
 	"slices"
@@ -80,11 +82,28 @@ func (r *Runner) diagnose(ctx context.Context, scope Scope, call ToolCall) strin
 	servers := r.servers.Diagnose(ctx, served)
 	var lines []string
 	for _, file := range files {
-		if !slices.Contains(servers.Checked, file) {
+		switch {
+		case !slices.Contains(servers.Checked, file):
 			lines = append(lines, r.diagnoseFile(ctx, scope, call, file)...)
+		case strings.EqualFold(filepath.Ext(file), ".go"):
+			lines = append(lines, gofmtErrors(file)...)
 		}
 	}
 	return report(servers.Lines(), lines, servers.OtherLines())
+}
+
+// gofmtErrors reports a Go file that is not gofmt-formatted, which language
+// servers leave out; a file that does not parse is theirs to report.
+func gofmtErrors(file string) []string {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil
+	}
+	formatted, err := format.Source(data)
+	if err != nil || bytes.Equal(formatted, data) {
+		return nil
+	}
+	return []string{file + ":1:1: the file is not gofmt-formatted"}
 }
 
 // diagnoseFile runs the check for file's language and keeps the lines naming it.

@@ -387,6 +387,12 @@ func TestDiagnosticsUseTheLanguageServerAndReportBrokenCallers(t *testing.T) {
 	if told := runner.PostToolUse(context.Background(), scope, editCall(file), ToolResponse{Status: "success"}); told != "" {
 		t.Fatalf("a clean file got %q", told)
 	}
+	if err := os.WriteFile(file, []byte("package m\n\nfunc  A() int { return 1 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if told := runner.PostToolUse(context.Background(), scope, editCall(file), ToolResponse{Status: "success"}); told != "Diagnostics after edit:\n"+file+":1:1: the file is not gofmt-formatted" {
+		t.Fatalf("an unformatted file the server checked got %q", told)
+	}
 
 	data := filepath.Join(dir, "data.json")
 	if err := os.WriteFile(data, []byte(`{"a": }`), 0o644); err != nil {

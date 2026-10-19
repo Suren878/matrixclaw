@@ -202,8 +202,14 @@ func (c *Core) finishApprovalCall(ctx context.Context, approval Approval, result
 	return err
 }
 
+// ListApprovals lists the approvals in state (any when empty) the session and
+// its subagents asked for.
 func (c *Core) ListApprovals(ctx context.Context, sessionID string, state ApprovalState) ([]Approval, error) {
-	return c.store.ListApprovals(ctx, strings.TrimSpace(sessionID), state)
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, fmt.Errorf("%w: session_id is required", ErrInvalidInput)
+	}
+	return c.store.ListApprovals(ctx, sessionID, state)
 }
 
 func workingDirForApprovalResume(sessionWorkingDir string, spec tools.Spec, approvalPath string) string {
