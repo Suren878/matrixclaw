@@ -3,6 +3,7 @@ package clientcmd
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,5 +45,24 @@ func TestUpdateRejectsUnknownSubcommand(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), `unknown subcommand "bogus"`) || !strings.Contains(stderr.String(), "Usage:") {
 		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
+
+func TestServiceLogsFallBackToTheDirectLaunchLog(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if _, err := defaultReadServiceLogs(context.Background(), 5); err == nil || !strings.Contains(err.Error(), "no logs") {
+		t.Fatalf("err = %v", err)
+	}
+	logPath := appsetup.DirectLogPath()
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("a\nb\nc\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := defaultReadServiceLogs(context.Background(), 2)
+	if err != nil || got != "b\nc\n" {
+		t.Fatalf("logs = %q, %v", got, err)
 	}
 }

@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/automation"
@@ -227,7 +229,12 @@ func (s *supervisor) StopDaemon(ctx context.Context) error {
 	safego.Go("supervisor.stopDaemon", func() {
 		time.Sleep(300 * time.Millisecond)
 		if err := s.stopSystemdService(context.Background()); err != nil {
-			log.Printf("matrixclawd daemon stop failed: %v", err)
+			// Not run by the unit (a container, macOS, a direct launch): end
+			// this process the way a service manager would.
+			log.Printf("matrixclawd stop through systemd failed, stopping this process: %v", err)
+			if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+				log.Printf("matrixclawd daemon stop failed: %v", err)
+			}
 		}
 	})
 	return nil

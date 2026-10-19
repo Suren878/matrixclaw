@@ -8,26 +8,50 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
+// startDirect launches the daemon detached from this process, logging to
+// DirectLogPath, and waits until it answers; a daemon that exits first is an
+// error carrying the end of its log.
 func (m *systemdUserDaemonManager) startDirect(ctx context.Context, daemonBin string, setupPath string, cfg Config) error {
-	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	logPath := DirectLogPath()
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+		return err
+	}
+	logFile, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = devNull.Close() }()
+	defer func() { _ = logFile.Close() }()
 
-	cmd := exec.CommandContext(ctx, daemonBin)
+	cmd := exec.Command(daemonBin)
 	cmd.Env = daemonProcessEnvironment(setupPath, cfg)
-	cmd.Stdin = nil
-	cmd.Stdout = devNull
-	cmd.Stderr = devNull
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	_ = cmd.Process.Release()
-	return m.waitForHealth(ctx, cfg.Daemon.HTTPAddr, 8*time.Second)
+	waitCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	exited := make(chan error, 1)
+	go func() {
+		exited <- cmd.Wait()
+		cancel()
+	}()
+	err = m.waitForHealth(waitCtx, cfg.Daemon.HTTPAddr, 8*time.Second)
+	if err == nil {
+		return nil
+	}
+	select {
+	case exitErr := <-exited:
+		tail, _ := tailFile(logPath, 5)
+		return fmt.Errorf("matrixclawd exited at start (%v): %s", exitErr, strings.TrimSpace(tail))
+	default:
+		return fmt.Errorf("%w (log: %s)", err, logPath)
+	}
 }
 
 func (execRunner) Run(ctx context.Context, name string, args ...string) error {

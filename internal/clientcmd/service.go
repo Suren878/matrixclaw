@@ -3,8 +3,10 @@ package clientcmd
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -117,10 +119,16 @@ func defaultReadServiceLogs(ctx context.Context, lines int) (string, error) {
 	if lines <= 0 {
 		lines = 80
 	}
-	cmd := exec.CommandContext(ctx, "journalctl", "--user", "-u", appsetup.DaemonUnitName, "-n", strconv.Itoa(lines), "--no-pager")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
+	if _, err := exec.LookPath("journalctl"); err == nil {
+		cmd := exec.CommandContext(ctx, "journalctl", "--user", "-u", appsetup.DaemonUnitName, "-n", strconv.Itoa(lines), "--no-pager")
+		output, err := cmd.CombinedOutput()
+		if err == nil && !strings.Contains(string(output), "-- No entries --") && strings.TrimSpace(string(output)) != "" {
+			return string(output), nil
+		}
 	}
-	return string(output), nil
+	logs, err := appsetup.ReadDirectLog(lines)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("no logs: the daemon is not run by a systemd user service and has not been launched directly (expected %s)", appsetup.DirectLogPath())
+	}
+	return logs, err
 }
