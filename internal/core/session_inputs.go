@@ -205,53 +205,43 @@ func (c *Core) startNextPendingSessionInput(ctx context.Context, sessionID strin
 	if sessionID == "" || c == nil || c.store == nil {
 		return false, nil
 	}
-
-	var startRunID string
-	var result AcceptRunResult
-	gate := c.sessionGate(sessionID)
-	gate.Lock()
-
-	if _, err := c.store.GetActiveRunBySession(ctx, sessionID); err == nil {
-		gate.Unlock()
-		return false, nil
-	} else if !errors.Is(err, ErrNotFound) {
-		gate.Unlock()
+	result, err := c.consumeNextPendingSessionInput(ctx, sessionID)
+	if err != nil || result.Run.ID == "" {
 		return false, err
 	}
-	if err := c.queuePendingSteersForInactiveSession(ctx, sessionID); err != nil {
-		gate.Unlock()
-		return false, err
-	}
-	input, err := c.store.NextPendingSessionInput(ctx, sessionID)
-	if errors.Is(err, ErrNotFound) {
-		gate.Unlock()
-		return false, nil
-	}
-	if err != nil {
-		gate.Unlock()
-		return false, err
-	}
-	session, err := c.store.GetSession(ctx, sessionID)
-	if err != nil {
-		gate.Unlock()
-		return false, err
-	}
-	result, err = c.consumeSessionInputAsRun(ctx, session, input)
-	if err != nil {
-		gate.Unlock()
-		return false, err
-	}
-	startRunID = result.Run.ID
-	gate.Unlock()
-
-	if startRunID == "" {
-		return false, nil
-	}
-	if err := c.startRun(ctx, startRunID); err != nil {
+	if err := c.startRun(ctx, result.Run.ID); err != nil {
 		_, failErr := c.failAcceptedRun(ctx, result, err)
 		return true, failErr
 	}
 	return true, nil
+}
+
+// consumeNextPendingSessionInput turns the session's next pending input into
+// an accepted run while no run is active; the result has no run otherwise.
+func (c *Core) consumeNextPendingSessionInput(ctx context.Context, sessionID string) (AcceptRunResult, error) {
+	gate := c.sessionGate(sessionID)
+	gate.Lock()
+	defer gate.Unlock()
+	if _, err := c.store.GetActiveRunBySession(ctx, sessionID); err == nil {
+		return AcceptRunResult{}, nil
+	} else if !errors.Is(err, ErrNotFound) {
+		return AcceptRunResult{}, err
+	}
+	if err := c.queuePendingSteersForInactiveSession(ctx, sessionID); err != nil {
+		return AcceptRunResult{}, err
+	}
+	input, err := c.store.NextPendingSessionInput(ctx, sessionID)
+	if errors.Is(err, ErrNotFound) {
+		return AcceptRunResult{}, nil
+	}
+	if err != nil {
+		return AcceptRunResult{}, err
+	}
+	session, err := c.store.GetSession(ctx, sessionID)
+	if err != nil {
+		return AcceptRunResult{}, err
+	}
+	return c.consumeSessionInputAsRun(ctx, session, input)
 }
 
 func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, input SessionInput) (AcceptRunResult, error) {
