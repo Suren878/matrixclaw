@@ -143,7 +143,7 @@ func (d *Dispatcher) sessionModelPicker(ctx context.Context, session core.Sessio
 		return Result{}, err
 	}
 	choice := modelChoice{
-		title:    "Model: " + response.ProviderID,
+		title:    "Model: " + textutil.FirstNonEmpty(response.ProviderLabel, response.ProviderID),
 		command:  providerModels.command(session.ID, response.ProviderID),
 		back:     sessionModel.command(session.ID),
 		fallback: response.ModelID,
@@ -171,11 +171,26 @@ func (d *Dispatcher) useSessionLLM(ctx context.Context, session core.Session, pr
 	if err != nil {
 		return Result{}, err
 	}
-	text := fmt.Sprintf("✅ Model selected: %s · %s", updated.ProviderID, updated.ModelID)
+	text := fmt.Sprintf("✅ Model selected: %s · %s", d.providerLabel(ctx, updated.ProviderID), updated.ModelID)
 	if _, err := d.daemon.CreateSystemMessage(ctx, updated.ID, text); err != nil {
 		return Result{}, err
 	}
 	return Result{Screen: TextData{Text: text}, ReloadSnapshot: true}, nil
+}
+
+// providerLabel is the display name of providerID, or the id when the
+// providers cannot be listed.
+func (d *Dispatcher) providerLabel(ctx context.Context, providerID string) string {
+	items, err := d.daemon.ListSetupProviders(ctx)
+	if err != nil {
+		return providerID
+	}
+	for _, item := range items {
+		if strings.EqualFold(item.ID, providerID) {
+			return providerPickerTitle(item)
+		}
+	}
+	return providerID
 }
 
 // modelChoice is a model picker of one provider. When the provider lists no

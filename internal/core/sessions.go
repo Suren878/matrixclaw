@@ -353,7 +353,7 @@ func (c *Core) ModelsForSession(ctx context.Context, sessionID string, providerI
 	if strings.EqualFold(option.ID, session.ProviderID) {
 		modelID = session.ModelID
 	}
-	response := SessionModelsResponse{ProviderID: option.ID, ModelID: modelID}
+	response := SessionModelsResponse{ProviderID: option.ID, ProviderLabel: option.Label, ModelID: modelID}
 	models, err := llms.Models(ctx, option.ID)
 	if err != nil {
 		response.ModelsError = err.Error()
