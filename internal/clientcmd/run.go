@@ -65,6 +65,10 @@ func Run(io IO, binaryName string, args []string) int {
 	case "":
 		return runDefaultCommand(stdout, stderr, binaryName, service)
 	case "setup":
+		if len(args) > 1 && isHelpArg(args[1]) {
+			printSetupUsage(stdout, binaryName)
+			return 0
+		}
 		return runSetupCommand(stdout, stderr, binaryName, service)
 	case "status":
 		return runStatusCommand(stdout, stderr, binaryName, service)
@@ -85,7 +89,7 @@ func Run(io IO, binaryName string, args []string) int {
 	case "skills":
 		return runSkillsCommand(stdout, stderr, binaryName, service, args[1:])
 	case "tui":
-		return runTUICommand(stderr, binaryName, service, args[1:])
+		return runTUICommand(stdout, stderr, binaryName, service, args[1:])
 	case "help", "-h", "--help":
 		printUsage(stdout, binaryName)
 		return 0
@@ -93,6 +97,11 @@ func Run(io IO, binaryName string, args []string) int {
 		printUsage(stdout, binaryName)
 		return 2
 	}
+}
+
+func printSetupUsage(w io.Writer, binaryName string) {
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintf(w, "  %s setup  Open the setup UI\n", binaryName)
 }
 
 func runDefaultCommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service) int {
@@ -104,7 +113,7 @@ func runDefaultCommand(stdout io.Writer, stderr io.Writer, binaryName string, se
 	if !configured {
 		return runSetupCommand(stdout, stderr, binaryName, service)
 	}
-	return runTUICommand(stderr, binaryName, service, nil)
+	return runTUICommand(stdout, stderr, binaryName, service, nil)
 }
 
 func runSetupCommand(stdout io.Writer, stderr io.Writer, binaryName string, service *appsetup.Service) int {
