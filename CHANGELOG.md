@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.1
 
 The native agent now works on large coding tasks by itself: it knows the
 project, edits robustly, checks its own work, can be undone, splits work
@@ -85,6 +85,15 @@ done.
 - A memory scope other than global, user or project is refused (400 on the
   API) instead of being saved as global. Memory that cannot be read is
   logged, and a run is no longer told every entry was removed.
+- A message sent while a run works (and `agent_steer` to a subagent) reaches
+  the model as a user message before its next step. It used to be appended
+  to a tool result, where models took it for tool output and ignored it.
+- The model is told which provider and model it runs on in the context note
+  next to the newest messages, so after a model switch it no longer repeats
+  the name an earlier model gave itself.
+- On Linux a shell command dies with the daemon, so a killed daemon leaves
+  no command running unseen.
+- A Go file a language server checked is also checked for gofmt formatting.
 
 ### Install and service
 
@@ -181,8 +190,9 @@ done.
   setup.json; `GET /v1/sessions/{id}/models` takes `?provider=` and reports a
   failed discovery in `models_error`. Saving a provider through
   `PATCH /v1/setup/providers/{id}` makes it active only with `"active": true`
-  or when no provider is active. Sessions lost `runtime_id` (use `kind`); new
-  routes cover checkpoints, hooks, goals and memory approval.
+  or when no provider is active. `GET /v1/approvals` requires `session_id`
+  (it answered an empty list without one). Sessions lost `runtime_id` (use
+  `kind`); new routes cover checkpoints, hooks, goals and memory approval.
 
 ## v0.2.0
 
