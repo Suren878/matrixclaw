@@ -4,7 +4,9 @@ GitHub Releases are the source of installable artifacts. Pushing a `v*` tag
 runs `.github/workflows/release.yml`: it verifies the tree (gofmt, test, build,
 vet), builds `linux` and `darwin` archives for `amd64` and `arm64`, and
 publishes them with `checksums.txt`. Each archive holds the three binaries,
-`README.md`, `LICENSE`, `docs/` and `scripts/install_voice_runtime.sh`.
+`README.md`, `LICENSE`, `docs/`, `scripts/README.md` and
+`scripts/install_voice_runtime.sh`. `install.sh` and `uninstall.sh` are not in
+the archive: they are fetched from the repository (`main`).
 
 Install channels:
 

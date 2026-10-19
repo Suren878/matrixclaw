@@ -115,35 +115,48 @@ done.
 
 ### Upgrade notes (breaking)
 
-- Back up first. The first start converts the database once to a canonical
-  schema (`PRAGMA user_version`), keeping `matrixclaw.db.pre-v1` next to it,
-  drops tables and columns nothing reads, then applies migrations 002-007.
+- Back up first, with the daemon running or stopped (see
+  [docs/STORAGE.md](docs/STORAGE.md#database)):
+
+  ```bash
+  sqlite3 ~/.local/state/matrixclaw/matrixclaw.db ".backup '$HOME/matrixclaw-backup.db'"
+  cp ~/.config/matrixclaw/setup.json ~/setup.json.backup
+  ```
+
+- Replace both binaries (`matrixclaw update install`, or the installer), then
+  run `matrixclaw service restart` so the running daemon is the new one.
   Installs older than v0.2.0 must upgrade through v0.2.0 first.
-- setup.json is converted to version 4 when the new daemon first starts (or
-  a setup change is saved), keeping `setup.json.pre-v4`;
-  from then on unknown keys and alias values are refused with an error naming
-  them.
-- Rollback: stop the daemon, restore `matrixclaw.db.pre-v1` (delete the
-  `-wal`/`-shm` files) and `setup.json.pre-v4`, start the old binary.
-- The built-in default assistant system prompt is gone; a `system_prompt`
+- The first start converts the database once to a canonical schema
+  (`PRAGMA user_version`), keeping `matrixclaw.db.pre-v1` next to it, drops
+  tables and columns nothing reads, then applies migrations 002-007.
+- setup.json is converted to version 4 when the new daemon first starts (or a
+  setup change is saved), keeping `setup.json.pre-v4`. From then on unknown
+  keys and alias values are refused with an error naming them.
+- Rollback: stop the daemon, restore `matrixclaw.db.pre-v1` over
+  `matrixclaw.db` (delete the `-wal`/`-shm` files) and `setup.json.pre-v4`
+  over `setup.json`, then start the old binary. A backup made before the
+  upgrade works the same way.
+- Telegram buttons sent before the upgrade are stale and answer "Unknown
+  command"; use the command again to get fresh ones.
+- Sandbox: `full_auto` sessions are confined by the shell sandbox as soon as
+  the host supports it. A session working in `~` can then write only
+  temporary directories and caches. Set `daemon.sandbox.mode` to `off` to opt
+  out.
+- The built-in default assistant system prompt is gone. A `system_prompt`
   saved in setup.json by an older wizard still applies and may contradict the
-  coding manual. Clear it unless you wrote it.
-- Some typed controlplane commands changed (`/modules mcp delete <id>`,
-  `/tasks bg-output <id>`); `/provider key` is gone. `/provider <id>` opens
-  the provider's models instead of its settings (`/provider edit <id>`);
-  `/provider use` now takes `<session> <provider> <model>`.
+  coding manual; clear it unless you wrote it.
+- `/provider` changed: `/provider <id>` opens the provider's models instead of
+  its settings (`/provider edit <id>`), `/provider use` takes
+  `<session> <provider> <model>`, and `/provider key` is gone (set the key in
+  the provider's form or with `api_key_env`). Other typed commands changed
+  too: `/modules mcp delete <id>`, `/tasks bg-output <id>`.
 - API: `PATCH /v1/sessions/{id}/llm` requires `model_id` (with an optional
   `provider_id`, else the session's) and no longer saves the owner's choice to
   setup.json; `GET /v1/sessions/{id}/models` takes `?provider=` and reports a
   failed discovery in `models_error`. Saving a provider through
   `PATCH /v1/setup/providers/{id}` makes it active only with `"active": true`
-  or when no provider is active. Telegram buttons sent
-  before the upgrade answer "Unknown command".
-- API: sessions lost `runtime_id` (use `kind`); new routes for checkpoints,
-  hooks, goals and memory approval.
-- `full_auto` sessions are confined by the shell sandbox as soon as the host
-  supports it; a session working in `~` can then write only temporary
-  directories and caches. Set `daemon.sandbox.mode` to `off` to opt out.
+  or when no provider is active. Sessions lost `runtime_id` (use `kind`); new
+  routes cover checkpoints, hooks, goals and memory approval.
 
 ## v0.2.0
 
