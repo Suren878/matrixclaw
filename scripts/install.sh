@@ -374,4 +374,8 @@ fi
 
 echo
 echo "Next:"
-echo "  $install_dir/matrixclaw setup"
+if [[ -f "${MATRIXCLAW_SETUP_PATH:-$(setup_config_dir)/setup.json}" ]]; then
+  echo "  $install_dir/matrixclaw service restart"
+else
+  echo "  $install_dir/matrixclaw setup"
+fi

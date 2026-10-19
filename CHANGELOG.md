@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Telegram: a reference cache an older version saved is removed once instead
+  of being reported on every start.
+- install.sh suggests `matrixclaw service restart` after an update of a
+  configured install, not `matrixclaw setup`.
+
 ## v0.2.1
 
 The native agent now works on large coding tasks by itself: it knows the

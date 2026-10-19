@@ -35,7 +35,10 @@ func newRefStore(path string, limit int) *refStore {
 	}
 	var saved []savedRef
 	if err := json.Unmarshal(data, &saved); err != nil {
-		log.Printf("telegram: reference file %s ignored: %v", store.path, err)
+		// References an older version saved cannot resolve; the next put
+		// would replace the file anyway.
+		log.Printf("telegram: reference file %s removed, it cannot be read: %v", store.path, err)
+		_ = os.Remove(store.path)
 		return store
 	}
 	for _, ref := range saved {
