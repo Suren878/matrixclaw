@@ -14,13 +14,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// WithHooks sets the runner of the user's hooks and the checks after edits;
-// without one none run.
-func (c *Core) WithHooks(runner *hooks.Runner) *Core {
-	c.hooks = runner
-	return c
-}
-
 // hookScope is the session a hook runs for, in the call's working directory
 // when it has one.
 func hookScope(session Session, runID string, workingDir string) hooks.Scope {

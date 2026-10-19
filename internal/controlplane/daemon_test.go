@@ -36,7 +36,7 @@ func newAPIDaemon(t *testing.T, deps api.Deps) *apiDaemon {
 	if err := st.CreateSession(ctx, core.Session{ID: "s1", Title: "s1", Kind: core.SessionKindAssistant, Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	deps.Core = core.New(st)
+	deps.Core = core.New(core.Config{Store: st})
 	if deps.Reload == nil {
 		deps.Reload = func(context.Context) error { return nil }
 	}

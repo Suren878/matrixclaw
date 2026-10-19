@@ -18,7 +18,7 @@ func TestReplyCutFourTimesInARowEndsWithAFinalTurn(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
 		calls++
 		text := fmt.Sprintf("Part %d", calls)
 		if err := providers.StreamText(ctx, text); err != nil {
@@ -57,7 +57,7 @@ func TestFilteredReplyCompletesTheRun(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{Provider: "recovery-test", StopReason: providers.StopContentFilter}, nil
 	})})
 	session, run := saveCrashRecoveryRun(t, db, "filtered", core.RunStatusAccepted, false)
@@ -80,7 +80,7 @@ func TestProviderRequestCarriesTheSessionCacheKey(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var cacheKey string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		cacheKey = request.CacheKey
 		return providers.Response{Text: "Done", StopReason: providers.StopEndTurn}, nil
 	})})
@@ -98,7 +98,7 @@ func TestRunStepRecordsTheProviderStopReason(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			return providers.Response{Text: "Cut off", Provider: "recovery-test", StopReason: providers.StopMaxTokens}, nil
@@ -123,9 +123,9 @@ func TestToolStepReasoningIsSentBackWithItsCalls(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
-	app.WithTools(tools.NewRegistry(tool))
+	app.SetTools(tools.NewRegistry(tool))
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			return providers.Response{
@@ -183,7 +183,7 @@ func TestSignedReasoningIsDroppedAfterAModelSwitch(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			app, db, cleanup := newCrashRecoveryCore(t)
 			defer cleanup()
-			app.WithTools(tools.NewRegistry(&recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}))
+			app.SetTools(tools.NewRegistry(&recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}))
 			calls := 0
 			runtime := identifiedRuntime{provider: providers.TypeAnthropic, model: tc.model}
 			runtime.generationRuntimeFunc = func(_ context.Context, request providers.Request) (providers.Response, error) {
@@ -204,7 +204,7 @@ func TestSignedReasoningIsDroppedAfterAModelSwitch(t *testing.T) {
 				}
 				return providers.Response{Text: "Done.", StopReason: providers.StopEndTurn}, nil
 			}
-			app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+			app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
 			_, run := saveCrashRecoveryRun(t, db, "model-switch-"+tc.model, core.RunStatusAccepted, false)
 			if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 				t.Fatal(err)
@@ -228,7 +228,7 @@ func TestTheModelIsToldWhichModelItRunsOn(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var system string
-	app.WithSessionLLMs(labeledLLMs{recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(labeledLLMs{recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		system = request.SystemPrompt
 		return providers.Response{Text: "Done", StopReason: providers.StopEndTurn}, nil
 	})}})

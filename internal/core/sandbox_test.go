@@ -22,8 +22,7 @@ func TestFullAutoCommandsWriteOnlyTheWorkspace(t *testing.T) {
 	if sandbox.Detect().Mechanism == "" {
 		t.Skip("commands cannot be confined here: " + sandbox.Detect().Detail)
 	}
-	app, db, _, _ := newTaskCore(t)
-	app.WithSandbox(func() sandbox.Settings { return sandbox.Settings{} })
+	app, db, _, _ := newTaskCore(t, core.Config{Sandbox: func() sandbox.Settings { return sandbox.Settings{} }})
 	session := permissionSession(t, db, "session_sandboxed", t.TempDir(), core.PermissionModeFullAuto, "")
 	// The temporary directories are writable, so the refused place is elsewhere.
 	wd, err := os.Getwd()

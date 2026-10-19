@@ -9,20 +9,21 @@ import (
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/permission"
+	"github.com/Suren878/matrixclaw/internal/store"
 )
 
-func withHooks(t *testing.T, app *core.Core, list ...hooks.Hook) {
+// hookCore is a permission core running list.
+func hookCore(t *testing.T, list ...hooks.Hook) (*core.Core, *store.SQLiteStore, *commandTool, string) {
 	t.Helper()
-	app.WithHooks(hooks.NewRunner(nil, func() hooks.Config { return hooks.Config{Hooks: list} }, filepath.Join(t.TempDir(), "hooks-trust.json"), nil))
+	return permissionCore(t, core.Config{Hooks: hooks.NewRunner(nil, func() hooks.Config { return hooks.Config{Hooks: list} }, filepath.Join(t.TempDir(), "hooks-trust.json"), nil)})
 }
 
 func TestPreToolUseHookCannotOverrideADenyRule(t *testing.T) {
 	t.Parallel()
-	app, db, bash, dir := permissionCore(t)
+	marker := filepath.Join(t.TempDir(), "hook-ran")
+	app, db, bash, dir := hookCore(t, hooks.Hook{Event: hooks.PreToolUse, Matcher: "bash", Command: `touch ` + marker + `; echo '{"hookSpecificOutput":{"permissionDecision":"allow"}}'`})
 	session := permissionSession(t, db, "session_hook_deny", dir, core.PermissionModeDefault, "")
 	saveRule(t, db, "rule_rm", permission.Rule{Tool: "bash", Pattern: "rm:*", Effect: permission.Deny, SessionID: session.ID})
-	marker := filepath.Join(t.TempDir(), "hook-ran")
-	withHooks(t, app, hooks.Hook{Event: hooks.PreToolUse, Matcher: "bash", Command: `touch ` + marker + `; echo '{"hookSpecificOutput":{"permissionDecision":"allow"}}'`})
 
 	if got := resultText(executeTool(t, app, session.ID, "bash", `{"command":"rm -rf build"}`)); got != "Blocked by rule bash: rm:*" {
 		t.Fatalf("denied command result = %q", got)
@@ -40,12 +41,11 @@ func TestPreToolUseHookCannotOverrideADenyRule(t *testing.T) {
 
 func TestPreToolUseHookBlocksOrAsks(t *testing.T) {
 	t.Parallel()
-	app, db, bash, dir := permissionCore(t)
-	session := permissionSession(t, db, "session_hook_block", dir, core.PermissionModeFullAuto, "")
-	withHooks(t, app,
+	app, db, bash, dir := hookCore(t,
 		hooks.Hook{Event: hooks.PreToolUse, Matcher: "bash", Command: `case "$(cat)" in *'git push'*) echo "pushes are off" >&2; exit 2;; esac`},
 		hooks.Hook{Event: hooks.PreToolUse, Matcher: "bash", Command: `case "$(cat)" in *deploy*) echo '{"hookSpecificOutput":{"permissionDecision":"ask","permissionDecisionReason":"deploys need a look"}}';; esac`},
 	)
+	session := permissionSession(t, db, "session_hook_block", dir, core.PermissionModeFullAuto, "")
 
 	if got := resultText(executeTool(t, app, session.ID, "bash", `{"command":"git push"}`)); got != "Blocked by hook: pushes are off" {
 		t.Fatalf("blocked command result = %q", got)
@@ -61,13 +61,12 @@ func TestPreToolUseHookBlocksOrAsks(t *testing.T) {
 
 func TestPreToolUseHookRewrittenInputMeetsTheRulesAgain(t *testing.T) {
 	t.Parallel()
-	app, db, bash, dir := permissionCore(t)
-	session := permissionSession(t, db, "session_hook_rewrite", dir, core.PermissionModeFullAuto, "")
-	saveRule(t, db, "rule_rm", permission.Rule{Tool: "bash", Pattern: "rm:*", Effect: permission.Deny, SessionID: session.ID})
-	withHooks(t, app, hooks.Hook{Event: hooks.PreToolUse, Matcher: "bash", Command: `case "$(cat)" in
+	app, db, bash, dir := hookCore(t, hooks.Hook{Event: hooks.PreToolUse, Matcher: "bash", Command: `case "$(cat)" in
 *'"command":"clean"'*) echo '{"hookSpecificOutput":{"updatedInput":{"command":"rm -rf build"}}}';;
 *'"command":"ls"'*) echo '{"hookSpecificOutput":{"updatedInput":{"command":"ls -la"},"additionalContext":"long listing"}}';;
 esac`})
+	session := permissionSession(t, db, "session_hook_rewrite", dir, core.PermissionModeFullAuto, "")
+	saveRule(t, db, "rule_rm", permission.Rule{Tool: "bash", Pattern: "rm:*", Effect: permission.Deny, SessionID: session.ID})
 
 	if got := resultText(executeTool(t, app, session.ID, "bash", `{"command":"clean"}`)); got != "Blocked by rule bash: rm:*" {
 		t.Fatalf("rewritten command result = %q", got)
@@ -82,9 +81,8 @@ esac`})
 
 func TestPostToolUseHookAndDiagnosticsEndTheResult(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
+	app, db, _, dir := hookCore(t, hooks.Hook{Event: hooks.PostToolUse, Matcher: "write", Command: `echo "wrote $(basename "$MATRIXCLAW_FILE")"`})
 	session := permissionSession(t, db, "session_hook_post", dir, core.PermissionModeFullAuto, "")
-	withHooks(t, app, hooks.Hook{Event: hooks.PostToolUse, Matcher: "write", Command: `echo "wrote $(basename "$MATRIXCLAW_FILE")"`})
 
 	got := resultText(executeTool(t, app, session.ID, "write", `{"file_path":"data.json","content":"{\"a\": 1,}"}`))
 	if !strings.Contains(got, "<hook event=\"PostToolUse\">\nwrote data.json\n</hook>") || !strings.Contains(got, "Diagnostics after edit:\n"+filepath.Join(dir, "data.json")+":1:9:") {

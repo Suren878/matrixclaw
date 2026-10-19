@@ -28,11 +28,10 @@ type goalScenario struct {
 func newGoalScenario(t *testing.T, reply func(ctx context.Context, n int) (providers.Response, error)) *goalScenario {
 	t.Helper()
 	db := openScenarioStore(t)
-	app := core.New(db)
-	s := &goalScenario{app: app, db: db, starter: &executingRunStarter{app: app}}
-	app.WithSessionFiles(t.TempDir()).WithRunStarter(s.starter)
-	app.WithTools(tools.NewRegistry(append(core.TodoToolExecutors(app), core.GoalToolExecutors(app)...)...))
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
+	app, starter := executingCore(core.Config{Store: db, SessionFiles: t.TempDir()})
+	s := &goalScenario{app: app, db: db, starter: starter}
+	app.SetTools(tools.NewRegistry(append(core.TodoToolExecutors(app), core.GoalToolExecutors(app)...)...))
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
 		s.mu.Lock()
 		n := len(s.requests)
 		s.requests = append(s.requests, request)

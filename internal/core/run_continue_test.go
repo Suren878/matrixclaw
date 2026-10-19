@@ -14,17 +14,17 @@ import (
 
 func TestContinueStartsARunThatContinuesTheLatestOne(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: db, RunStarter: starter})
 	session, previous := saveCrashRecoveryRun(t, db, "continue", core.RunStatusCompleted, false)
 
 	result, err := app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: session.ID, Continue: true})
-
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if result.Run.ContinuesRunID != previous.ID || result.UserMessage.Role != transcript.MessageRoleUser || result.UserMessage.Content != "Continue" {
 		t.Fatalf("result = %+v", result)
 	}
@@ -39,9 +39,9 @@ func TestContinueStartsARunThatContinuesTheLatestOne(t *testing.T) {
 
 func TestContinueIsRejectedWhileARunIsActive(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithRunStarter(&recordingRunStarter{})
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	session, _ := saveCrashRecoveryRun(t, db, "continue-busy", core.RunStatusRunning, false)
 
 	_, err := app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: session.ID, Continue: true})
@@ -53,10 +53,10 @@ func TestContinueIsRejectedWhileARunIsActive(t *testing.T) {
 
 func TestContinueAfterTheContextFilledUpPointsToContextClear(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: db, RunStarter: starter})
 	session, full := saveCrashRecoveryRun(t, db, "continue-full", core.RunStatusFailed, false)
 	full.StopReason = agent.StopContextExhausted
 	if err := db.SealRun(context.Background(), full, nil, false); err != nil {
@@ -75,9 +75,9 @@ func TestContinueAfterTheContextFilledUpPointsToContextClear(t *testing.T) {
 
 func TestContinueNeedsAnEarlierRun(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithRunStarter(&recordingRunStarter{})
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	now := runRecoveryTestTime()
 	session := core.Session{ID: "session_empty", Title: "empty", Kind: core.SessionKindAssistant, Status: core.SessionStatusActive, CreatedAt: now, UpdatedAt: now}
 	if err := db.CreateSession(context.Background(), session); err != nil {
@@ -93,10 +93,10 @@ func TestContinueNeedsAnEarlierRun(t *testing.T) {
 
 func TestContinueKeepsTheOriginalAssignmentVerbatim(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithRunStarter(&recordingRunStarter{})
-	app.WithSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
+	app.SetSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
 			return providers.Response{Text: "SUMMARY"}, nil
 		}

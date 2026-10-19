@@ -33,13 +33,13 @@ func todoWriteCall(id string, items string) providers.Response {
 
 func TestTodoWriteKeepsTheListOfTheRunChain(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	ctx := context.Background()
-	app.WithRunStarter(&recordingRunStarter{})
-	app.WithTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
 	var requests []providers.Request
-	app.WithSessionLLMs(scriptedLLMs(&requests,
+	app.SetSessionLLMs(scriptedLLMs(&requests,
 		todoWriteCall("call_first", `[{"content":"Read the parser","status":"completed"}]`),
 		providers.Response{Text: "Read it."},
 		todoWriteCall("call_second", `[{"content":"Read the parser","status":"completed"},{"content":"Fix the bug","active_form":"Fixing the bug","status":"completed"}]`),
@@ -74,9 +74,9 @@ func TestTodoWriteReturnsWhatToCorrectToTheModel(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	ctx := context.Background()
-	app.WithTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
 	var requests []providers.Request
-	app.WithSessionLLMs(scriptedLLMs(&requests,
+	app.SetSessionLLMs(scriptedLLMs(&requests,
 		todoWriteCall("call_bad", `[{"content":"a","status":"in_progress"},{"content":"b","status":"in_progress"}]`),
 		providers.Response{Text: "Done."},
 	))
@@ -105,9 +105,9 @@ func TestSubagentsGetTheirOwnTodoList(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	ctx := context.Background()
-	app.WithTools(tools.NewRegistry(append(core.TodoToolExecutors(app), core.MemoryToolExecutors(app)...)...))
+	app.SetTools(tools.NewRegistry(append(core.TodoToolExecutors(app), core.MemoryToolExecutors(app)...)...))
 	var requests []providers.Request
-	app.WithSessionLLMs(scriptedLLMs(&requests,
+	app.SetSessionLLMs(scriptedLLMs(&requests,
 		todoWriteCall("call_child", `[{"content":"Scan the repo","status":"completed"}]`),
 		providers.Response{Text: "Scanned."},
 	))
@@ -158,7 +158,7 @@ func TestClearingTheTodoListTellsClients(t *testing.T) {
 }
 func TestTodoWritesOfOneSessionShareAConcurrencyKey(t *testing.T) {
 	t.Parallel()
-	registry := tools.NewRegistry(core.TodoToolExecutors(core.New(nil))...)
+	registry := tools.NewRegistry(core.TodoToolExecutors(core.New(core.Config{}))...)
 	first := registry.ConcurrencyKey(todo.ToolName, tools.Call{SessionID: "s1"})
 	if first == "" || first != registry.ConcurrencyKey(todo.ToolName, tools.Call{SessionID: "s1"}) || first == registry.ConcurrencyKey(todo.ToolName, tools.Call{SessionID: "s2"}) {
 		t.Fatalf("todo_write keys = %q", first)
@@ -167,13 +167,13 @@ func TestTodoWritesOfOneSessionShareAConcurrencyKey(t *testing.T) {
 
 func TestOpenTodoHoldsBackOnlyRunsOfTheChainThatWroteIt(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	ctx := context.Background()
-	app.WithRunStarter(&recordingRunStarter{})
-	app.WithTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
 	var requests []providers.Request
-	app.WithSessionLLMs(scriptedLLMs(&requests,
+	app.SetSessionLLMs(scriptedLLMs(&requests,
 		todoWriteCall("call_list", `[{"content":"Fix the bug","status":"in_progress"},{"content":"Run the tests","status":"pending"}]`),
 		providers.Response{Text: "Looking into it."},
 		providers.Response{Text: "Blocked: the tests need a database."},

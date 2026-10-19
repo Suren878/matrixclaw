@@ -138,7 +138,7 @@ func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "recovered answer"}
-	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
 
 	session, run := saveCrashRecoveryRun(t, sqliteStore, "generation", core.RunStatusRunning, false)
 	partial := transcript.Message{
@@ -185,11 +185,12 @@ func TestRecoverRunningGenerationSkipsPartialAndCompletes(t *testing.T) {
 
 func TestEndingTheLifetimeKeepsExecutingRunsForRecovery(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	interruptedRuntime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
 	lifetime, stopLifetime := context.WithCancel(context.Background())
-	app.WithLifetime(lifetime).WithSessionLLMs(recoveryLLMs{runtime: interruptedRuntime})
+	app := core.New(core.Config{Store: sqliteStore, Lifetime: lifetime})
+	interruptedRuntime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
+	app.SetSessionLLMs(recoveryLLMs{runtime: interruptedRuntime})
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "lifetime_end", core.RunStatusAccepted, false)
 
 	if err := app.Recover(context.Background()); err != nil {
@@ -211,14 +212,14 @@ func TestEndingTheLifetimeKeepsExecutingRunsForRecovery(t *testing.T) {
 
 func TestGracefulExecutorStopPreservesAndRecoversNativeGeneration(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	executionCtx, cancelExecution := context.WithCancel(context.Background())
+	app := core.New(core.Config{Store: sqliteStore, Lifetime: executionCtx})
 	interruptedRuntime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
-	app.WithSessionLLMs(recoveryLLMs{runtime: interruptedRuntime})
+	app.SetSessionLLMs(recoveryLLMs{runtime: interruptedRuntime})
 
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "graceful_native", core.RunStatusAccepted, false)
-	executionCtx, cancelExecution := context.WithCancel(context.Background())
-	app.WithLifetime(executionCtx)
 	executionDone := make(chan error, 1)
 	go func() { executionDone <- app.ExecuteRun(executionCtx, run.ID) }()
 	waitRecoverySignal(t, interruptedRuntime.started, "native generation start")
@@ -239,8 +240,8 @@ func TestGracefulExecutorStopPreservesAndRecoversNativeGeneration(t *testing.T) 
 	}
 
 	recoveredRuntime := &recoveryRuntime{text: "native resumed after restart"}
-	restarted := core.New(sqliteStore).
-		WithSessionLLMs(recoveryLLMs{runtime: recoveredRuntime})
+	restarted := core.New(core.Config{Store: sqliteStore})
+	restarted.SetSessionLLMs(recoveryLLMs{runtime: recoveredRuntime})
 	if err := restarted.Recover(context.Background()); err != nil {
 		t.Fatalf("Recover after graceful stop: %v", err)
 	}
@@ -258,7 +259,7 @@ func TestUserCancellationIsNotConvertedIntoRestartRecovery(t *testing.T) {
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	interruptedRuntime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
-	app.WithSessionLLMs(recoveryLLMs{runtime: interruptedRuntime})
+	app.SetSessionLLMs(recoveryLLMs{runtime: interruptedRuntime})
 
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "user_cancel", core.RunStatusAccepted, false)
 	executionDone := make(chan error, 1)
@@ -290,7 +291,7 @@ func TestStartupRecoveryAndPersistedWorkflowRaceExecutesRunOnce(t *testing.T) {
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "single recovered answer"}
-	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
 
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "startup_race", core.RunStatusRunning, false)
 	if err := sqliteStore.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
@@ -333,13 +334,13 @@ func (t *slowTool) Execute(ctx context.Context, call tools.Call) (tools.Result, 
 
 func TestRecoveryLeavesReadOnlyCallsInFlightToTheResumedRun(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
-	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "Inspected."}})
+	app := core.New(core.Config{Store: sqliteStore, RunStarter: starter})
+	app.SetSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "Inspected."}})
 	slow := &slowTool{recoveryTool: recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}, release: make(chan struct{})}
-	app.WithTools(tools.NewRegistry(slow))
+	app.SetTools(tools.NewRegistry(slow))
 	var runs []core.Run
 	for _, name := range []string{"slow_a", "slow_b"} {
 		_, run := saveCrashRecoveryRun(t, sqliteStore, name, core.RunStatusRunning, false)
@@ -377,14 +378,14 @@ func TestRecoveryLeavesReadOnlyCallsInFlightToTheResumedRun(t *testing.T) {
 
 func TestRecoverMutatingToolRequiresFreshApprovalBeforeSingleReplay(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	runtime := &recoveryRuntime{text: "finished after approved recovery"}
 	starter := &recordingRunStarter{}
+	app := core.New(core.Config{Store: sqliteStore, RunStarter: starter})
+	runtime := &recoveryRuntime{text: "finished after approved recovery"}
 	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
-	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
-	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(mutation))
+	app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.SetTools(tools.NewRegistry(mutation))
 
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "mutation", core.RunStatusRunning, false)
 	saveInterruptedToolCall(t, sqliteStore, run, "tool_mutation", mutation.spec.ID)
@@ -415,13 +416,13 @@ func TestRecoverMutatingToolRequiresFreshApprovalBeforeSingleReplay(t *testing.T
 
 func TestRecoveredGrantedCallWaitsForTheRetryApproval(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	app := core.New(core.Config{Store: sqliteStore, RunStarter: &recordingRunStarter{}})
 	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
 	mutation.spec.Asks = true
-	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "done"}})
-	app.WithRunStarter(&recordingRunStarter{})
-	app.WithTools(tools.NewRegistry(mutation))
+	app.SetSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "done"}})
+	app.SetTools(tools.NewRegistry(mutation))
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "granted_then_restart", core.RunStatusRunning, false)
 	saveInterruptedToolCall(t, sqliteStore, run, "tool_mutation", mutation.spec.ID)
 	decided := runRecoveryTestTime()
@@ -458,17 +459,17 @@ func TestRecoveredGrantedCallWaitsForTheRetryApproval(t *testing.T) {
 
 func TestRecoverDeniedToolReturnsTheDenialToTheModel(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
+	app := core.New(core.Config{Store: sqliteStore, RunStarter: starter})
 	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
 	var saw string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		saw = toolResultContent(request, "tool_mutation")
 		return providers.Response{Text: "Kept the old config."}, nil
 	})})
-	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(mutation))
+	app.SetTools(tools.NewRegistry(mutation))
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "denied_before_restart", core.RunStatusRunning, false)
 	saveInterruptedToolCall(t, sqliteStore, run, "tool_mutation", mutation.spec.ID)
 	decided := runRecoveryTestTime()
@@ -498,18 +499,18 @@ func TestRecoverDeniedToolReturnsTheDenialToTheModel(t *testing.T) {
 
 func TestRecoveryLeavesDeferredCallsToTheResumedRun(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
+	app := core.New(core.Config{Store: sqliteStore, RunStarter: starter})
 	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
 	inspect := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
 	var results []string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		results = []string{toolResultContent(request, "tool_mutation"), toolResultContent(request, "tool_inspect")}
 		return providers.Response{Text: "Done."}, nil
 	})})
-	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(mutation, inspect))
+	app.SetTools(tools.NewRegistry(mutation, inspect))
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "deferred", core.RunStatusRunning, false)
 	saveInterruptedToolCall(t, sqliteStore, run, "tool_mutation", mutation.spec.ID)
 	deferred := agent.ToolCallMessage("tool_inspect", run.SessionID, run.ID, inspect.spec.ID, []byte(`{}`), false, run.StartedAt.Add(2*time.Second))
@@ -544,18 +545,18 @@ func TestRecoveryLeavesDeferredCallsToTheResumedRun(t *testing.T) {
 
 func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
+	app := core.New(core.Config{Store: sqliteStore, RunStarter: starter})
 	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
 	inspect := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
 	var results []string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		results = toolResults(request)
 		return providers.Response{Text: "Done."}, nil
 	})})
-	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(mutation, inspect))
+	app.SetTools(tools.NewRegistry(mutation, inspect))
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "batch", core.RunStatusRunning, false)
 	at := run.StartedAt.Add(time.Second)
 	saveRunRecoveryTestMessage(t, sqliteStore, agent.ToolCallMessage("tool_done", run.SessionID, run.ID, inspect.spec.ID, []byte(`{}`), true, at))
@@ -612,17 +613,17 @@ func TestRecoveryAnswersEveryCallOfABatchInFlight(t *testing.T) {
 
 func TestRecoveryDefersAgainTheCallsTheBatchCheckpointNamesNotStarted(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	app := core.New(core.Config{Store: sqliteStore, RunStarter: &recordingRunStarter{}})
 	mutation := &recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}
 	inspect := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
 	var results []string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		results = toolResults(request)
 		return providers.Response{Text: "Done."}, nil
 	})})
-	app.WithRunStarter(&recordingRunStarter{})
-	app.WithTools(tools.NewRegistry(mutation, inspect))
+	app.SetTools(tools.NewRegistry(mutation, inspect))
 	_, run := saveCrashRecoveryRun(t, sqliteStore, "batch_checkpoint", core.RunStatusRunning, false)
 	// The barrier returned and the call behind it lost its deferred mark, but the
 	// daemon stopped before the next checkpoint started it.
@@ -662,8 +663,8 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "recovered completion"}
-	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 
 	parentSession, parentRun := saveCrashRecoveryRun(t, sqliteStore, "parent", core.RunStatusRunning, false)
 	childSession, childRun := saveCrashRecoveryRun(t, sqliteStore, "child", core.RunStatusRunning, true)
@@ -703,12 +704,11 @@ func TestRecoverBlockingSubagentCompletesChildThenParentWithoutDuplicate(t *test
 
 func TestRestartedParentWaitsForAllItsBlockingChildren(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "child done"}})
-	starter := &executingRunStarter{app: app}
-	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app, starter := executingCore(core.Config{Store: sqliteStore})
+	app.SetSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "child done"}})
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	parentSession, parentRun := saveCrashRecoveryRun(t, sqliteStore, "parent", core.RunStatusRunning, false)
 	var childRuns []core.Run
 	for _, name := range []string{"a", "b"} {
@@ -818,14 +818,14 @@ func (r *recoveryExternalRuntime) receivedInput() string {
 
 func TestRecoverExternalAgentContinuesExistingSession(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	runtime := &recoveryExternalRuntime{}
 	registry, err := externalagents.NewRegistry(runtime)
 	if err != nil {
 		t.Fatal(err)
 	}
-	app.WithExternalAgents(registry, sqliteStore)
+	app := core.New(core.Config{Store: sqliteStore, ExternalAgents: registry, ExternalAgentStore: sqliteStore})
 
 	session, run := saveCrashRecoveryRun(t, sqliteStore, "external", core.RunStatusRunning, false)
 	session.Kind = core.SessionKindExternalAgent
@@ -859,14 +859,15 @@ func TestRecoverExternalAgentContinuesExistingSession(t *testing.T) {
 
 func TestGracefulExecutorStopRecoversExternalSessionWithoutNativeToolReplay(t *testing.T) {
 	t.Parallel()
-	app, sqliteStore, cleanup := newCrashRecoveryCore(t)
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	interruptedRuntime := &interruptibleExternalRuntime{started: make(chan struct{})}
 	registry, err := externalagents.NewRegistry(interruptedRuntime)
 	if err != nil {
 		t.Fatal(err)
 	}
-	app.WithExternalAgents(registry, sqliteStore)
+	executionCtx, cancelExecution := context.WithCancel(context.Background())
+	app := core.New(core.Config{Store: sqliteStore, ExternalAgents: registry, ExternalAgentStore: sqliteStore, Lifetime: executionCtx})
 
 	session, run := saveCrashRecoveryRun(t, sqliteStore, "graceful_external", core.RunStatusAccepted, false)
 	session.Kind = core.SessionKindExternalAgent
@@ -881,8 +882,6 @@ func TestGracefulExecutorStopRecoversExternalSessionWithoutNativeToolReplay(t *t
 		t.Fatal(err)
 	}
 
-	executionCtx, cancelExecution := context.WithCancel(context.Background())
-	app.WithLifetime(executionCtx)
 	executionDone := make(chan error, 1)
 	go func() { executionDone <- app.ExecuteRun(executionCtx, run.ID) }()
 	waitRecoverySignal(t, interruptedRuntime.started, "external generation start")
@@ -899,7 +898,7 @@ func TestGracefulExecutorStopRecoversExternalSessionWithoutNativeToolReplay(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	restarted := core.New(sqliteStore).WithExternalAgents(recoveredRegistry, sqliteStore)
+	restarted := core.New(core.Config{Store: sqliteStore, ExternalAgents: recoveredRegistry, ExternalAgentStore: sqliteStore})
 	if err := restarted.Recover(context.Background()); err != nil {
 		t.Fatalf("Recover external after graceful stop: %v", err)
 	}
@@ -924,11 +923,17 @@ func recoverRun(t *testing.T, app *core.Core, runID string) {
 
 func newCrashRecoveryCore(t *testing.T) (*core.Core, *store.SQLiteStore, func()) {
 	t.Helper()
+	sqliteStore, cleanup := newCrashRecoveryStore(t)
+	return core.New(core.Config{Store: sqliteStore}), sqliteStore, cleanup
+}
+
+func newCrashRecoveryStore(t *testing.T) (*store.SQLiteStore, func()) {
+	t.Helper()
 	sqliteStore, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
 	if err != nil {
 		t.Fatalf("new sqlite: %v", err)
 	}
-	return core.New(sqliteStore), sqliteStore, func() { _ = sqliteStore.Close() }
+	return sqliteStore, func() { _ = sqliteStore.Close() }
 }
 
 func saveCrashRecoveryRun(t *testing.T, sqliteStore *store.SQLiteStore, suffix string, status core.RunStatus, hidden bool) (core.Session, core.Run) {

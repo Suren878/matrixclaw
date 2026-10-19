@@ -15,7 +15,7 @@ func TestPersistedWorkflowCanRecoverOrphanedRunningRunInline(t *testing.T) {
 	t.Parallel()
 	app, sqliteStore, cleanup := newRunRecoveryTestCore(t)
 	defer cleanup()
-	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "continued inline"}})
+	app.SetSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "continued inline"}})
 	ctx := context.Background()
 	session := saveRunRecoveryTestSession(t, sqliteStore, "session_execute_orphan", "Orphan", "/tmp")
 	user := transcript.Message{
@@ -63,7 +63,7 @@ func newRunRecoveryTestCore(t *testing.T) (*core.Core, *store.SQLiteStore, func(
 	if err != nil {
 		t.Fatalf("new sqlite: %v", err)
 	}
-	app := core.New(sqliteStore)
+	app := core.New(core.Config{Store: sqliteStore})
 	return app, sqliteStore, func() { _ = sqliteStore.Close() }
 }
 

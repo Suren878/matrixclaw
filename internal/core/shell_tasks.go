@@ -34,13 +34,6 @@ const foregroundWaitDelay = 2 * time.Second
 // once unless the daemon configures another limit.
 const DefaultBackgroundTasks = 8
 
-// WithCommandEnvironment sets the environment of shell commands, read for
-// every command.
-func (c *Core) WithCommandEnvironment(env func() []string) *Core {
-	c.commandEnv = env
-	return c
-}
-
 // RunCommand runs a bash call's command. A background command, or a foreground
 // one still running after its AutoBackground delay, goes on as a task of the
 // call's session while it runs fewer than its limit; a foreground one is

@@ -24,12 +24,13 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-func newTaskCore(t *testing.T) (*core.Core, *store.SQLiteStore, core.Session, string) {
+func newTaskCore(t *testing.T, cfg core.Config) (*core.Core, *store.SQLiteStore, core.Session, string) {
 	t.Helper()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	t.Cleanup(cleanup)
 	files := t.TempDir()
-	app.WithSessionFiles(files)
+	cfg.Store, cfg.SessionFiles = db, files
+	app := core.New(cfg)
 	session := permissionSession(t, db, "session_tasks", t.TempDir(), core.PermissionModeDefault, "")
 	return app, db, session, files
 }
@@ -59,7 +60,7 @@ func waitTaskStatus(t *testing.T, db *store.SQLiteStore, id string, status core.
 
 func TestForegroundCommandReturnsItsOutputAndLeavesNoFile(t *testing.T) {
 	t.Parallel()
-	app, _, session, files := newTaskCore(t)
+	app, _, session, files := newTaskCore(t, core.Config{})
 
 	result, err := app.RunCommand(context.Background(), taskCall(session), foreground("echo hello; exit 2"))
 
@@ -74,7 +75,7 @@ func TestForegroundCommandReturnsItsOutputAndLeavesNoFile(t *testing.T) {
 
 func TestForegroundOutputPastTheLimitKeepsItsFile(t *testing.T) {
 	t.Parallel()
-	app, _, session, _ := newTaskCore(t)
+	app, _, session, _ := newTaskCore(t, core.Config{})
 	command := foreground("seq 1 1000")
 	command.OutputLimit = 30
 
@@ -90,7 +91,7 @@ func TestForegroundOutputPastTheLimitKeepsItsFile(t *testing.T) {
 
 func TestForegroundCommandTimesOut(t *testing.T) {
 	t.Parallel()
-	app, _, session, _ := newTaskCore(t)
+	app, _, session, _ := newTaskCore(t, core.Config{})
 	command := foreground("echo started; sleep 30")
 	command.Timeout, command.AutoBackground = 300*time.Millisecond, 0
 
@@ -103,7 +104,7 @@ func TestForegroundCommandTimesOut(t *testing.T) {
 
 func TestSlowForegroundCommandMovesToTheBackground(t *testing.T) {
 	t.Parallel()
-	app, db, session, _ := newTaskCore(t)
+	app, db, session, _ := newTaskCore(t, core.Config{})
 	command := foreground("echo first; sleep 1; echo second")
 	command.AutoBackground = 200 * time.Millisecond
 
@@ -128,7 +129,7 @@ func TestSlowForegroundCommandMovesToTheBackground(t *testing.T) {
 
 func TestBackgroundTaskOutputWaitsAndFilters(t *testing.T) {
 	t.Parallel()
-	app, db, session, _ := newTaskCore(t)
+	app, db, session, _ := newTaskCore(t, core.Config{})
 	command := foreground("echo ok 1; echo FAIL 2; sleep 0.3; echo FAIL 3; exit 1")
 	command.Background = true
 
@@ -155,7 +156,7 @@ func TestBackgroundTaskOutputWaitsAndFilters(t *testing.T) {
 
 func TestStoppedTaskIsCanceledWithoutAnEvent(t *testing.T) {
 	t.Parallel()
-	app, db, session, _ := newTaskCore(t)
+	app, db, session, _ := newTaskCore(t, core.Config{})
 	command := foreground("sleep 30")
 	command.Background = true
 	result, err := app.RunCommand(context.Background(), taskCall(session), command)
@@ -179,7 +180,7 @@ func TestStoppedTaskIsCanceledWithoutAnEvent(t *testing.T) {
 
 func TestStoppedTaskCanCleanUpOnTERM(t *testing.T) {
 	t.Parallel()
-	app, db, session, _ := newTaskCore(t)
+	app, db, session, _ := newTaskCore(t, core.Config{})
 	command := foreground("trap 'echo cleaned up; exit 0' TERM; echo up; while true; do sleep 0.1; done")
 	command.Background = true
 	result, err := app.RunCommand(context.Background(), taskCall(session), command)
@@ -227,7 +228,7 @@ func waitProcessGone(t *testing.T, pid int) {
 
 func TestRecoveryKillsLeftoverShellTasksAndMarksThemLost(t *testing.T) {
 	t.Parallel()
-	app, db, session, files := newTaskCore(t)
+	app, db, session, files := newTaskCore(t, core.Config{})
 	out, err := shelltask.CreateOutput(filepath.Join(files, session.ID, "tasks", "task_left.log"))
 	if err != nil {
 		t.Fatal(err)
@@ -262,9 +263,8 @@ func TestRecoveryKillsLeftoverShellTasksAndMarksThemLost(t *testing.T) {
 // lost, and no run is started (and failed) for them meanwhile.
 func TestACommandEndingWithTheDaemonIsLostAfterTheRestart(t *testing.T) {
 	t.Parallel()
-	app, db, session, files := newTaskCore(t)
 	lifetime, stop := context.WithCancel(context.Background())
-	app.WithLifetime(lifetime)
+	app, db, session, files := newTaskCore(t, core.Config{Lifetime: lifetime})
 	command := foreground("sleep 30")
 	command.Background = true
 	result, err := app.RunCommand(context.Background(), taskCall(session), command)
@@ -283,7 +283,7 @@ func TestACommandEndingWithTheDaemonIsLostAfterTheRestart(t *testing.T) {
 		t.Fatalf("the command's group outlived StopShellTasks: %v", err)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if err := core.New(db).WithSessionFiles(files).Recover(context.Background()); err != nil {
+	if err := core.New(core.Config{Store: db, SessionFiles: files}).Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -297,7 +297,7 @@ func TestACommandEndingWithTheDaemonIsLostAfterTheRestart(t *testing.T) {
 
 func TestDeletingASessionStopsItsTasks(t *testing.T) {
 	t.Parallel()
-	app, db, session, _ := newTaskCore(t)
+	app, db, session, _ := newTaskCore(t, core.Config{})
 	command := foreground("sleep 30")
 	command.Background = true
 	result, err := app.RunCommand(context.Background(), taskCall(session), command)
@@ -320,11 +320,11 @@ func TestDeletingASessionStopsItsTasks(t *testing.T) {
 
 func TestNativeRunSeesFinishedAndRunningTasks(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	ctx := context.Background()
 	files := t.TempDir()
-	app.WithSessionFiles(files)
+	app := core.New(core.Config{Store: db, SessionFiles: files})
+	ctx := context.Background()
 	session, run := saveCrashRecoveryRun(t, db, "notes", core.RunStatusAccepted, false)
 	out, err := shelltask.CreateOutput(filepath.Join(files, session.ID, "tasks", "task_done.log"))
 	if err != nil {
@@ -349,7 +349,7 @@ func TestNativeRunSeesFinishedAndRunningTasks(t *testing.T) {
 	}
 
 	var requests []providers.Request
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		requests = append(requests, request)
 		return providers.Response{Text: "Noted."}, nil
 	})})
@@ -375,7 +375,7 @@ func TestNativeRunSeesFinishedAndRunningTasks(t *testing.T) {
 
 func TestUserStopsATaskAndTheSessionIsTold(t *testing.T) {
 	t.Parallel()
-	app, db, session, _ := newTaskCore(t)
+	app, db, session, _ := newTaskCore(t, core.Config{})
 	command := foreground("echo up; sleep 30")
 	command.Background = true
 	result, err := app.RunCommand(context.Background(), taskCall(session), command)
@@ -408,7 +408,7 @@ func TestUserStopsATaskAndTheSessionIsTold(t *testing.T) {
 
 func TestSessionTasksListsBackgroundTasksPastManyOthers(t *testing.T) {
 	t.Parallel()
-	app, db, session, _ := newTaskCore(t)
+	app, db, session, _ := newTaskCore(t, core.Config{})
 	ctx := context.Background()
 	now := runRecoveryTestTime()
 	if err := db.CreateTask(ctx, core.Task{ID: "task_bg", SessionID: session.ID, Kind: core.TaskKindShell, Status: core.TaskStatusRunning, Command: "npm run dev", Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
@@ -430,7 +430,7 @@ func TestSessionTasksListsBackgroundTasksPastManyOthers(t *testing.T) {
 
 func TestSessionRunsAtMostItsLimitOfBackgroundCommands(t *testing.T) {
 	t.Parallel()
-	app, _, session, _ := newTaskCore(t)
+	app, _, session, _ := newTaskCore(t, core.Config{})
 	app.SetTuning(core.Tuning{BackgroundTasks: 1})
 	command := foreground("sleep 30")
 	command.Background = true
@@ -453,7 +453,7 @@ func TestSessionRunsAtMostItsLimitOfBackgroundCommands(t *testing.T) {
 
 func TestAutoBackgroundedCommandKeepsWhatItLeftRunning(t *testing.T) {
 	t.Parallel()
-	app, db, session, _ := newTaskCore(t)
+	app, db, session, _ := newTaskCore(t, core.Config{})
 	command := foreground("sleep 0.3; (sleep 2.5; echo late) & echo early")
 	command.AutoBackground = 100 * time.Millisecond
 
@@ -470,7 +470,7 @@ func TestAutoBackgroundedCommandKeepsWhatItLeftRunning(t *testing.T) {
 
 func TestTaskOutputWaitsForASubagent(t *testing.T) {
 	t.Parallel()
-	app, db, session, _ := newTaskCore(t)
+	app, db, session, _ := newTaskCore(t, core.Config{})
 	ctx := context.Background()
 	now := runRecoveryTestTime()
 	if err := db.CreateTask(ctx, core.Task{ID: "task_agent", SessionID: session.ID, Kind: core.TaskKindSubagent, Status: core.TaskStatusRunning, Command: "look", Background: true, StartedAt: now, UpdatedAt: now}); err != nil {
@@ -491,12 +491,12 @@ func TestTaskOutputWaitsForASubagent(t *testing.T) {
 
 func TestDeletingASessionStopsItsRun(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithSessionFiles(t.TempDir())
+	app := core.New(core.Config{Store: db, SessionFiles: t.TempDir()})
 	started := make(chan struct{})
 	stopped := make(chan struct{})
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("long_build", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("long_build", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
 		close(started)
 		select {
 		case <-ctx.Done():
@@ -506,7 +506,7 @@ func TestDeletingASessionStopsItsRun(t *testing.T) {
 			return tools.Result{Content: "built"}, nil
 		}
 	}}))
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-build", Name: "long_build", Arguments: []byte(`{}`)}}}, nil
 	})})
 	session, run := saveCrashRecoveryRun(t, db, "delete_busy", core.RunStatusAccepted, false)
@@ -526,7 +526,7 @@ func TestDeletingASessionStopsItsRun(t *testing.T) {
 
 func TestForegroundCommandKillsWhatItLeftRunning(t *testing.T) {
 	t.Parallel()
-	app, _, session, _ := newTaskCore(t)
+	app, _, session, _ := newTaskCore(t, core.Config{})
 
 	result, err := app.RunCommand(context.Background(), taskCall(session), foreground("sleep 30 >/dev/null 2>&1 & echo $!"))
 
@@ -543,8 +543,7 @@ func TestForegroundCommandKillsWhatItLeftRunning(t *testing.T) {
 func TestCommandsDoNotSeeProviderKeys(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-provider-secret")
 	t.Setenv("MATRIXCLAW_API_TOKEN", "daemon-token")
-	app, _, session, _ := newTaskCore(t)
-	app.WithCommandEnvironment(func() []string { return setup.ChildEnvironment(setup.Config{}, os.Environ()) })
+	app, _, session, _ := newTaskCore(t, core.Config{CommandEnvironment: func() []string { return setup.ChildEnvironment(setup.Config{}, os.Environ()) }})
 
 	result, err := app.RunCommand(context.Background(), taskCall(session), foreground("env"))
 
@@ -555,7 +554,7 @@ func TestCommandsDoNotSeeProviderKeys(t *testing.T) {
 
 func TestCompactionPrunesTheOutputOfEndedCommands(t *testing.T) {
 	t.Parallel()
-	app, db, session, files := newTaskCore(t)
+	app, db, session, files := newTaskCore(t, core.Config{})
 	ctx := context.Background()
 	// The ended task is stored as such: one ending now would wake the session.
 	endedLog := filepath.Join(files, session.ID, "tasks", "task_ended.log")
@@ -619,10 +618,10 @@ func TestReadonlyChildRunsOnlyReadOnlyCommands(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	shell := &recordingShell{}
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), tools.NewShellExecutors(shell)...)...))
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), tools.NewShellExecutors(shell)...)...))
 	var childTools []providers.ToolDefinition
 	var results []string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		seen := toolResults(request)
 		switch {
 		case childPrompt(request) != "" && len(seen) == 0:

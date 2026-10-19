@@ -62,7 +62,7 @@ func (s *Server) handleClientDeliveryFail(w http.ResponseWriter, r *http.Request
 	if errText := strings.TrimSpace(request.Error); errText != "" {
 		deliveryErr = errors.New(errText)
 	}
-	if err := s.Core.MarkClientDeliveryFailed(r.Context(), core.ClientDelivery{ID: r.PathValue("id")}, deliveryErr); err != nil {
+	if err := s.Core.MarkClientDeliveryFailed(r.Context(), r.PathValue("id"), deliveryErr); err != nil {
 		writeError(w, err)
 		return
 	}

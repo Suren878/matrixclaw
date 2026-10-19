@@ -35,7 +35,7 @@ func TestReloadKeepsExternalAgentsWhenTheirConfigIsUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = sqliteStore.Close() }()
-	s := newSupervisor(context.Background(), core.New(sqliteStore), nil, nil, nil)
+	s := newSupervisor(context.Background(), core.New(core.Config{Store: sqliteStore}), nil, nil, nil)
 	runtime := &closeCountingRuntime{}
 	cfg := map[string]setup.ExternalAgentConfig{"codex": {Enabled: true}}
 	s.SetExternalAgents(sqliteStore, []externalagents.RuntimeAgent{runtime}, cfg)
@@ -188,7 +188,7 @@ func TestRestartNoticeIsHeldUntilTheNextStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = sqliteStore.Close() }()
-	app := core.New(sqliteStore)
+	app := core.New(core.Config{Store: sqliteStore})
 	s := newSupervisor(ctx, app, nil, nil, nil)
 	saved, err := s.saveRestartDelivery(ctx, core.AdminRestartRequest{Notification: &core.ClientDeliveryTarget{Client: "telegram", ExternalKey: "7", Address: []byte(`{"kind":"chat","chat_id":7,"message_id":3}`)}})
 	if err != nil {
@@ -242,7 +242,7 @@ func TestReloadReappliesRunLimitsAndAutomationSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = sqliteStore.Close() }()
-	app := core.New(sqliteStore).WithRunStarter(idleRunStarter{})
+	app := core.New(core.Config{Store: sqliteStore, RunStarter: idleRunStarter{}})
 	jobs := automation.NewService(automation.NewSQLiteStore(sqliteStore.DB()), app)
 	s := newSupervisor(ctx, app, jobs, nil, nil)
 	s.telegram.botAPIURL = botAPI.URL
@@ -251,7 +251,7 @@ func TestReloadReappliesRunLimitsAndAutomationSettings(t *testing.T) {
 		s.telegram.stopWorker()
 		s.telegram.mu.Unlock()
 	}()
-	defaults := core.New(sqliteStore).Tuning()
+	defaults := core.New(core.Config{Store: sqliteStore}).Tuning()
 	// fire runs a new job at once in a session of its own, since a session
 	// takes one triggered run at a time.
 	fire := func() (automation.Job, []core.ClientDelivery) {

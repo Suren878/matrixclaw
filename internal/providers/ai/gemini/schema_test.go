@@ -74,7 +74,7 @@ func decodeParameters(t *testing.T, raw json.RawMessage) map[string]any {
 // registeredToolDefinitions mirrors the daemon's registry, minus modules that import this package.
 func registeredToolDefinitions(t *testing.T) []providers.ToolDefinition {
 	t.Helper()
-	app := core.New(nil)
+	app := core.New(core.Config{})
 	registry := tools.NewRegistry(append(tools.CoreExecutors(),
 		automation.NewReminderTool(nil),
 		automation.NewScheduledAITaskTool(nil),

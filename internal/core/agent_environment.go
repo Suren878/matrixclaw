@@ -18,13 +18,6 @@ type PromptEnvironment struct {
 	AgentsDir        string
 }
 
-// WithPromptEnvironment sets the timezone and global instruction file of
-// native run prompts; without a timezone the clock reads in UTC.
-func (c *Core) WithPromptEnvironment(env PromptEnvironment) *Core {
-	c.promptEnv = env
-	return c
-}
-
 // runFacts is what a native run is told about where it works, read once
 // when it starts.
 type runFacts struct {

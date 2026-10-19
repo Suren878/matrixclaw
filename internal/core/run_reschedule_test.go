@@ -26,12 +26,12 @@ func interruptNativeRun(t *testing.T, app *core.Core, runID string, runtime *int
 
 func TestInterruptedNativeRunIsRescheduledWhileTheDaemonRuns(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: db, RunStarter: starter})
 	runtime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
-	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
 	_, run := saveCrashRecoveryRun(t, db, "reschedule", core.RunStatusAccepted, false)
 
 	interruptNativeRun(t, app, run.ID, runtime)
@@ -44,15 +44,14 @@ func TestInterruptedNativeRunIsRescheduledWhileTheDaemonRuns(t *testing.T) {
 
 func TestInterruptedNativeRunWaitsForStartupRecoveryAfterShutdown(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	lifetime, stop := context.WithCancel(context.Background())
-	stop()
-	app.WithLifetime(lifetime)
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: db, Lifetime: lifetime, RunStarter: starter})
+	stop()
 	runtime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
-	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
 	_, run := saveCrashRecoveryRun(t, db, "shutdown", core.RunStatusAccepted, false)
 
 	interruptNativeRun(t, app, run.ID, runtime)
@@ -68,14 +67,21 @@ func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
 	for _, restart := range []bool{false, true} {
 		name := map[bool]string{false: "rescheduled", true: "after restart"}[restart]
 		t.Run(name, func(t *testing.T) {
-			app, db, cleanup := newCrashRecoveryCore(t)
+			db, cleanup := newCrashRecoveryStore(t)
 			defer cleanup()
+			lifetime := context.Background()
+			if restart {
+				stopped, stop := context.WithCancel(lifetime)
+				stop()
+				lifetime = stopped
+			}
+			app := core.New(core.Config{Store: db, Lifetime: lifetime})
 			var mu sync.Mutex
 			toolCalls := 0
 			var toolResult string
 			started := newStartSignal()
 			configure := func(app *core.Core) {
-				app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
+				app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
 					mu.Lock()
 					toolCalls++
 					first := toolCalls == 1
@@ -86,7 +92,7 @@ func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
 					}
 					return tools.Result{Content: "state ok", Status: tools.ResultStatusSuccess}, nil
 				}}))
-				app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+				app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 					mu.Lock()
 					defer mu.Unlock()
 					for _, message := range request.Messages {
@@ -99,11 +105,6 @@ func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
 				})})
 			}
 			configure(app)
-			if restart {
-				lifetime, stop := context.WithCancel(context.Background())
-				stop()
-				app.WithLifetime(lifetime)
-			}
 			session, run := saveCrashRecoveryRun(t, db, "tool-interrupt", core.RunStatusAccepted, false)
 
 			ctx, cancel := context.WithCancel(context.Background())
@@ -116,7 +117,7 @@ func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
 			}
 			if restart {
 				assertRecoveryRunStatus(t, db, run.ID, core.RunStatusRunning)
-				restarted := core.New(db)
+				restarted := core.New(core.Config{Store: db})
 				configure(restarted)
 				if err := restarted.Recover(context.Background()); err != nil {
 					t.Fatalf("Recover: %v", err)
@@ -139,16 +140,15 @@ func TestRunInterruptedDuringToolReplaysItAndCompletes(t *testing.T) {
 
 func TestInterruptedParentWaitsAgainForItsRunningBlockingChild(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	starter := &executingRunStarter{app: app}
-	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app, starter := executingCore(core.Config{Store: db})
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	childStarted, release := newStartSignal(), make(chan struct{})
 	var mu sync.Mutex
 	childCalls := 0
 	var delegateResult string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
 		mu.Lock()
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			childCalls++

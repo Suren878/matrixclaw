@@ -60,13 +60,6 @@ type SkillLearning interface {
 	DraftProposal(ctx context.Context, proposal SkillProposal) (string, error)
 }
 
-// WithSkillLearning turns on session reviews, which file what they find with
-// learning.
-func (c *Core) WithSkillLearning(learning SkillLearning) *Core {
-	c.reviews.learning = learning
-	return c
-}
-
 // sessionReviews keeps the reviews of this daemon: the sessions in review and
 // when each was last asked for one.
 type sessionReviews struct {

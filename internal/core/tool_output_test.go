@@ -60,12 +60,12 @@ func assertKeptOutput(t *testing.T, root string, part *transcript.ToolResultPart
 
 func TestLargeToolOutputIsKeptInASessionFile(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	root := t.TempDir()
+	app := core.New(core.Config{Store: db, SessionFiles: root})
 	big := bigToolOutput()
-	app.WithSessionFiles(root)
-	app.WithTools(tools.NewRegistry(outputTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), content: big}))
+	app.SetTools(tools.NewRegistry(outputTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), content: big}))
 	session, _ := saveCrashRecoveryRun(t, db, "output", core.RunStatusCompleted, false)
 
 	result, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: session.ID, ToolName: "dump", Args: json.RawMessage(`{}`)})
@@ -85,15 +85,15 @@ func TestLargeToolOutputIsKeptInASessionFile(t *testing.T) {
 
 func TestLargeToolOutputOfANativeRunIsKeptInASessionFile(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	root := t.TempDir()
+	app := core.New(core.Config{Store: db, SessionFiles: root})
 	big := bigToolOutput()
-	app.WithSessionFiles(root)
-	app.WithTools(tools.NewRegistry(outputTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), content: big}))
+	app.SetTools(tools.NewRegistry(outputTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), content: big}))
 	var seen string
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-dump", Name: "dump", Arguments: []byte(`{}`)}}}, nil
@@ -133,12 +133,12 @@ func TestLargeToolOutputOfANativeRunIsKeptInASessionFile(t *testing.T) {
 
 func TestToolOutputOfAnUnsafeSessionIDStaysOutOfTheFileSystem(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	parent := t.TempDir()
 	root := filepath.Join(parent, "sessions")
-	app.WithSessionFiles(root)
-	app.WithTools(tools.NewRegistry(outputTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), content: bigToolOutput()}))
+	app := core.New(core.Config{Store: db, SessionFiles: root})
+	app.SetTools(tools.NewRegistry(outputTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), content: bigToolOutput()}))
 	session, _ := saveCrashRecoveryRun(t, db, "output", core.RunStatusCompleted, false)
 	session.ID = "../escape"
 	if err := db.CreateSession(context.Background(), session); err != nil {
@@ -167,10 +167,10 @@ func TestToolOutputOfAnUnsafeSessionIDStaysOutOfTheFileSystem(t *testing.T) {
 
 func TestSmallToolOutputStaysInline(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithSessionFiles(t.TempDir())
-	app.WithTools(tools.NewRegistry(outputTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), content: "small"}))
+	app := core.New(core.Config{Store: db, SessionFiles: t.TempDir()})
+	app.SetTools(tools.NewRegistry(outputTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), content: "small"}))
 	session, _ := saveCrashRecoveryRun(t, db, "small_output", core.RunStatusCompleted, false)
 
 	result, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: session.ID, ToolName: "dump", Args: json.RawMessage(`{}`)})
@@ -182,12 +182,12 @@ func TestSmallToolOutputStaysInline(t *testing.T) {
 
 func TestLargeToolErrorIsKeptInASessionFile(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	root := t.TempDir()
+	app := core.New(core.Config{Store: db, SessionFiles: root})
 	big := bigToolOutput()
-	app.WithSessionFiles(root)
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("fail", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("fail", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		return tools.Result{}, errors.New(big)
 	}}))
 	session, _ := saveCrashRecoveryRun(t, db, "error_output", core.RunStatusCompleted, false)

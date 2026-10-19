@@ -552,7 +552,7 @@ provider and model.
 - `lsp {operation, file_path, line, character, query}` asks the language
   server for definition, references, implementation, hover and symbols. It
   is read-only, covered by `read` rules, and offered only when a server
-  would serve the session's working directory (`core.WithLSP`).
+  would serve the session's working directory (`core.Config.LSPAvailable`).
 
 ### File checkpoints
 

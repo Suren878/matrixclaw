@@ -30,7 +30,7 @@ func TestManualCompactUsesTheCompactModel(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var mainCalls, cheapCalls int
-	app.WithSessionLLMs(twoModelLLMs{
+	app.SetSessionLLMs(twoModelLLMs{
 		recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 			mainCalls++
 			return providers.Response{Text: "main summary"}, nil
@@ -53,7 +53,7 @@ func TestManualCompactUsesTheCompactModel(t *testing.T) {
 func TestUnavailableCompactModelIsLoggedOnce(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithSessionLLMs(twoModelLLMs{recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(twoModelLLMs{recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{Text: "main summary"}, nil
 	})}})
 	app.SetTuning(core.Tuning{CompactProvider: "cheap", CompactModel: "small"})
@@ -77,7 +77,7 @@ func TestManualCompactRecordsUsageAndKeepsTheLatestRequest(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{Text: "SUMMARY", Usage: providers.Usage{PromptTokens: 700, OutputTokens: 30}}, nil
 	})})
 	session, run := saveCrashRecoveryRun(t, db, "usage", core.RunStatusCompleted, false)

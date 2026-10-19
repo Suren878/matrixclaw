@@ -105,22 +105,7 @@ func (c *Core) ReleaseHeldClientDeliveries(ctx context.Context) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("%w: store not configured", ErrExecutionUnavailable)
 	}
-	held, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{Status: ClientDeliveryStatusHeld, Limit: 100})
-	if err != nil {
-		return err
-	}
-	for _, delivery := range held {
-		delivery.Status = ClientDeliveryStatusPending
-		delivery.UpdatedAt = c.now().UTC()
-		if err := c.store.UpdateClientDelivery(ctx, delivery); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Core) MarkClientDeliverySent(ctx context.Context, delivery ClientDelivery) error {
-	return c.finishClientDelivery(ctx, delivery, ClientDeliveryStatusSent, "")
+	return c.store.ReleaseHeldClientDeliveries(ctx, c.now().UTC())
 }
 
 func (c *Core) AcknowledgeClientDelivery(ctx context.Context, deliveryID string) error {
@@ -128,25 +113,20 @@ func (c *Core) AcknowledgeClientDelivery(ctx context.Context, deliveryID string)
 	if deliveryID == "" {
 		return fmt.Errorf("%w: delivery id is required", ErrInvalidInput)
 	}
-	return c.finishClientDelivery(ctx, ClientDelivery{ID: deliveryID}, ClientDeliveryStatusSent, "")
+	return c.finishClientDelivery(ctx, deliveryID, ClientDeliveryStatusSent, "")
 }
 
-func (c *Core) MarkClientDeliveryFailed(ctx context.Context, delivery ClientDelivery, deliveryErr error) error {
+func (c *Core) MarkClientDeliveryFailed(ctx context.Context, deliveryID string, deliveryErr error) error {
 	errText := ""
 	if deliveryErr != nil {
 		errText = strings.TrimSpace(deliveryErr.Error())
 	}
-	return c.finishClientDelivery(ctx, delivery, ClientDeliveryStatusFailed, errText)
+	return c.finishClientDelivery(ctx, deliveryID, ClientDeliveryStatusFailed, errText)
 }
 
-func (c *Core) finishClientDelivery(ctx context.Context, delivery ClientDelivery, status ClientDeliveryStatus, errText string) error {
+func (c *Core) finishClientDelivery(ctx context.Context, deliveryID string, status ClientDeliveryStatus, errText string) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("%w: store not configured", ErrExecutionUnavailable)
 	}
-	now := c.now().UTC()
-	delivery.Status = status
-	delivery.Error = errText
-	delivery.UpdatedAt = now
-	delivery.FinishedAt = &now
-	return c.store.UpdateClientDelivery(ctx, delivery)
+	return c.store.FinishClientDelivery(ctx, deliveryID, status, errText, c.now().UTC())
 }

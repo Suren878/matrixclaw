@@ -23,13 +23,6 @@ const snapshotTimeout = time.Minute
 // restoreToolName labels the checkpoint a restore takes of the state it replaces.
 const restoreToolName = "restore"
 
-// WithCheckpoints snapshots working directories into store before tool
-// batches that change files; nil (the default) takes none.
-func (c *Core) WithCheckpoints(store *checkpoint.Store) *Core {
-	c.checkpoints = store
-	return c
-}
-
 // changesFiles reports whether a call may change files in the run's working
 // directory: a mutating file or shell tool, a child agent writing it, or a
 // worktree merge.

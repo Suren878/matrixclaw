@@ -50,7 +50,7 @@ Drive matrixclaw through its stable boundaries:
 | Boundary | How |
 |---|---|
 | Agent engine | `internal/agent/agenttest`: `NewScriptedModel(turns...)` and `NewFixture()` fakes for every port |
-| Core workflows | a real `store.NewSQLite` in `t.TempDir()` and `core.New(store)`, with a scripted model; runs, approvals, tasks, recovery |
+| Core workflows | a real `store.NewSQLite` in `t.TempDir()` and `core.New(core.Config{Store: store})`, with a scripted model; runs, approvals, tasks, recovery |
 | HTTP API | `api.New(deps).Handler()` under `httptest`; `routes_test.go` lists every request the clients send |
 | Commands and screens | a `controlplane.Dispatcher` over a real API server per role (`internal/controlplane/daemon_test.go`) |
 | Store | temporary databases; upgrade tests open an old-shape database and check the result (`schema_upgrade_test.go`) |

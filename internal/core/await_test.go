@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,19 +29,20 @@ type awaitScenario struct {
 	requests []providers.Request
 }
 
-func newAwaitScenario(t *testing.T, st core.Store, db *store.SQLiteStore, awaitArgs func(taskID string) string) (*awaitScenario, string) {
+// newAwaitScenario builds the scenario's core from cfg over db.
+func newAwaitScenario(t *testing.T, cfg core.Config, db *store.SQLiteStore, awaitArgs func(taskID string) string) (*awaitScenario, string) {
 	t.Helper()
-	app := core.New(st)
-	s := &awaitScenario{app: app, db: db, starter: &executingRunStarter{app: app}}
-	app.WithSessionFiles(t.TempDir()).WithRunStarter(s.starter)
-	app.WithTools(tools.NewRegistry(core.AwaitToolExecutors(app)...))
+	cfg.SessionFiles = t.TempDir()
+	app, starter := executingCore(cfg)
+	s := &awaitScenario{app: app, db: db, starter: starter}
+	app.SetTools(tools.NewRegistry(core.AwaitToolExecutors(app)...))
 	s.session, s.run = saveCrashRecoveryRun(t, db, "await", core.RunStatusAccepted, false)
 	started, err := app.RunCommand(context.Background(), tools.Call{SessionID: s.session.ID}, tools.Command{Command: "sleep 30", Background: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = app.CancelTask(context.Background(), started.TaskID); s.starter.wait(t) })
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.requests = append(s.requests, request)
@@ -99,7 +101,7 @@ func openScenarioStore(t *testing.T) *store.SQLiteStore {
 func TestAwaitedTaskFinishingWakesTheRun(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	s, taskID := newAwaitScenario(t, db, db, func(id string) string { return `{"ids":["` + id + `"]}` })
+	s, taskID := newAwaitScenario(t, core.Config{Store: db}, db, func(id string) string { return `{"ids":["` + id + `"]}` })
 
 	if err := s.app.ExecuteRun(context.Background(), s.run.ID); err != nil {
 		t.Fatal(err)
@@ -124,10 +126,9 @@ func TestAwaitedTaskFinishingWakesTheRun(t *testing.T) {
 func TestAwaitTimerWakesTheRun(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	s, _ := newAwaitScenario(t, db, db, func(string) string { return `{"timeout_seconds":60}` })
 	now := time.Now().UTC()
 	var clock sync.Mutex
-	s.app.WithClock(func() time.Time { clock.Lock(); defer clock.Unlock(); return now })
+	s, _ := newAwaitScenario(t, core.Config{Store: db, Clock: func() time.Time { clock.Lock(); defer clock.Unlock(); return now }}, db, func(string) string { return `{"timeout_seconds":60}` })
 
 	if err := s.app.ExecuteRun(context.Background(), s.run.ID); err != nil {
 		t.Fatal(err)
@@ -152,7 +153,7 @@ func TestAwaitTimerWakesTheRun(t *testing.T) {
 func TestUserMessageWakesAnAwaitingRun(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	s, _ := newAwaitScenario(t, db, db, func(string) string { return `{}` })
+	s, _ := newAwaitScenario(t, core.Config{Store: db}, db, func(string) string { return `{}` })
 	if err := s.app.ExecuteRun(context.Background(), s.run.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +195,7 @@ func (s parkFailingStore) SaveRunCheckpoint(ctx context.Context, checkpoint core
 func TestAStoreErrorAsTheRunParksFailsIt(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	s, _ := newAwaitScenario(t, parkFailingStore{db}, db, func(string) string { return `{}` })
+	s, _ := newAwaitScenario(t, core.Config{Store: parkFailingStore{db}}, db, func(string) string { return `{}` })
 
 	if err := s.app.ExecuteRun(context.Background(), s.run.ID); err == nil || !strings.Contains(err.Error(), "disk full") {
 		t.Fatalf("ExecuteRun = %v", err)
@@ -207,7 +208,7 @@ func TestTaskFinishingWhileTheRunParksStillWakesIt(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
 	hooked := &parkHookStore{SQLiteStore: db}
-	s, taskID := newAwaitScenario(t, hooked, db, func(id string) string { return `{"ids":["` + id + `"]}` })
+	s, taskID := newAwaitScenario(t, core.Config{Store: hooked}, db, func(id string) string { return `{"ids":["` + id + `"]}` })
 	hooked.onPark = func() {
 		if _, err := s.app.CancelTask(context.Background(), taskID); err != nil {
 			t.Error(err)
@@ -227,7 +228,7 @@ func TestTaskFinishingWhileTheRunParksStillWakesIt(t *testing.T) {
 func TestAwaitReportsTasksThatAlreadyFinished(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	app := core.New(db).WithSessionFiles(t.TempDir())
+	app := core.New(core.Config{Store: db, SessionFiles: t.TempDir()})
 	session := permissionSession(t, db, "session_done", t.TempDir(), core.PermissionModeDefault, "")
 	started, err := app.RunCommand(context.Background(), tools.Call{SessionID: session.ID}, tools.Command{Command: "exit 3", Background: true})
 	if err != nil {
@@ -265,7 +266,7 @@ func TestMessageQueuedWhileTheRunWorkedWakesItOnceItAwaits(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
 	hooked := &parkHookStore{SQLiteStore: db}
-	s, _ := newAwaitScenario(t, hooked, db, func(string) string { return `{}` })
+	s, _ := newAwaitScenario(t, core.Config{Store: hooked}, db, func(string) string { return `{}` })
 	hooked.onPark = func() {
 		accepted, err := s.app.AcceptRun(context.Background(), core.HandleMessageInput{SessionID: s.session.ID, Text: "also check the logs", BusyMode: core.BusyInputModeQueue})
 		if err != nil || accepted.Status != core.AcceptRunStatusQueued {
@@ -286,10 +287,8 @@ func TestMessageQueuedWhileTheRunWorkedWakesItOnceItAwaits(t *testing.T) {
 func TestCancelingAWaitingRunStopsItsTasksWithoutWakingTheSession(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	app := core.New(db)
-	starter := &executingRunStarter{app: app}
-	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(core.AwaitToolExecutors(app)...))
+	app, starter := executingCore(core.Config{Store: db, SessionFiles: t.TempDir()})
+	app.SetTools(tools.NewRegistry(core.AwaitToolExecutors(app)...))
 	session, run := saveCrashRecoveryRun(t, db, "cancel-waiting", core.RunStatusAccepted, false)
 	ctx := context.Background()
 	started, err := app.RunCommand(ctx, tools.Call{SessionID: session.ID, RunID: run.ID}, tools.Command{Command: "sleep 30", Background: true})
@@ -297,7 +296,7 @@ func TestCancelingAWaitingRunStopsItsTasksWithoutWakingTheSession(t *testing.T) 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = app.CancelTask(context.Background(), started.TaskID) })
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if toolResultContent(request, "call_await") == "" {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call_await", Name: "await", Arguments: json.RawMessage(`{"ids":["` + started.TaskID + `"]}`)}}}, nil
 		}
@@ -338,10 +337,10 @@ func TestCancelingAWaitingRunStopsItsTasksWithoutWakingTheSession(t *testing.T) 
 
 func TestCancelingARunWaitingForApprovalStartsTheQueuedMessage(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: db, RunStarter: starter})
 	session, run := saveCrashRecoveryRun(t, db, "cancel-approval", core.RunStatusWaitingApproval, false)
 	ctx := context.Background()
 	queued, err := app.AcceptRun(ctx, core.HandleMessageInput{SessionID: session.ID, Text: "next task", BusyMode: core.BusyInputModeQueue})
@@ -377,12 +376,11 @@ func (s *staleRunStore) GetRun(ctx context.Context, runID string) (core.Run, err
 
 func TestCancelLandingAsTheRunParksStartsTheMessageItMissed(t *testing.T) {
 	t.Parallel()
-	_, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	stale := &staleRunStore{SQLiteStore: db}
-	app := core.New(stale)
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: stale, RunStarter: starter})
 	session, run := saveCrashRecoveryRun(t, db, "cancel-parking", core.RunStatusWaitingEvents, false)
 	ctx := context.Background()
 	if err := db.SaveRunWakeup(ctx, core.RunWakeup{RunID: run.ID, SessionID: session.ID, WakeAt: time.Now().Add(time.Hour)}); err != nil {
@@ -409,9 +407,9 @@ func TestCancelLandingAsTheRunParksStartsTheMessageItMissed(t *testing.T) {
 
 func TestCanceledRunRecordsFinishedAt(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithRunStarter(&recordingRunStarter{})
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	_, run := saveCrashRecoveryRun(t, db, "cancel-finished", core.RunStatusWaitingApproval, false)
 	ctx := context.Background()
 
@@ -425,17 +423,26 @@ func TestCanceledRunRecordsFinishedAt(t *testing.T) {
 	}
 }
 
-type failingRunStarter struct{}
+// flakyRunStarter fails to start runs while down.
+type flakyRunStarter struct {
+	recordingRunStarter
+	down atomic.Bool
+}
 
-func (failingRunStarter) StartRun(context.Context, string) error {
-	return errors.New("run starter down")
+func (s *flakyRunStarter) StartRun(ctx context.Context, runID string) error {
+	if s.down.Load() {
+		return errors.New("run starter down")
+	}
+	return s.recordingRunStarter.StartRun(ctx, runID)
 }
 
 func TestWakeupStaysUntilItsRunExecutes(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithRunStarter(failingRunStarter{})
+	starter := &flakyRunStarter{}
+	starter.down.Store(true)
+	app := core.New(core.Config{Store: db, RunStarter: starter})
 	session, run := saveCrashRecoveryRun(t, db, "wake-retry", core.RunStatusWaitingEvents, false)
 	ctx := context.Background()
 	if err := db.SaveRunWakeup(ctx, core.RunWakeup{RunID: run.ID, SessionID: session.ID, WakeAt: time.Now().UTC().Add(-time.Second)}); err != nil {
@@ -448,8 +455,7 @@ func TestWakeupStaysUntilItsRunExecutes(t *testing.T) {
 	if _, err := db.GetRunWakeup(ctx, run.ID); err != nil {
 		t.Fatalf("wakeup after a failed start: %v", err)
 	}
-	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	starter.down.Store(false)
 	if err := app.WakeDueRuns(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -460,7 +466,7 @@ func TestWakeupStaysUntilItsRunExecutes(t *testing.T) {
 	if _, err := db.GetRunWakeup(ctx, run.ID); err != nil {
 		t.Fatalf("wakeup before the run executes: %v", err)
 	}
-	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "Woke."}})
+	app.SetSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "Woke."}})
 	if err := app.ExecuteRun(ctx, run.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -472,9 +478,8 @@ func TestWakeupStaysUntilItsRunExecutes(t *testing.T) {
 func TestRecoveryWakesAnIdleSessionOnceForWorkThatFinished(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	app := core.New(db).WithSessionFiles(t.TempDir())
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: db, SessionFiles: t.TempDir(), RunStarter: starter})
 	session := permissionSession(t, db, "session_restart", t.TempDir(), core.PermissionModeDefault, "")
 	ctx := context.Background()
 	now := time.Now().UTC()
@@ -521,9 +526,8 @@ func TestRecoveryGoesOnPastAFailedWake(t *testing.T) {
 	db := openScenarioStore(t)
 	_, broken := saveCrashRecoveryRun(t, db, "wake-broken", core.RunStatusWaitingEvents, false)
 	_, fine := saveCrashRecoveryRun(t, db, "wake-fine", core.RunStatusWaitingEvents, false)
-	app := core.New(wakeupFailingStore{SQLiteStore: db, runID: broken.ID})
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: wakeupFailingStore{SQLiteStore: db, runID: broken.ID}, RunStarter: starter})
 
 	if err := app.Recover(context.Background()); err == nil {
 		t.Fatal("recovery hid the failed wake")
@@ -537,7 +541,7 @@ func TestRecoveryGoesOnPastAFailedWake(t *testing.T) {
 func TestDeletingASessionWakesNothingInIt(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	s, _ := newAwaitScenario(t, db, db, func(id string) string { return `{"ids":["` + id + `"]}` })
+	s, _ := newAwaitScenario(t, core.Config{Store: db}, db, func(id string) string { return `{"ids":["` + id + `"]}` })
 	if err := s.app.ExecuteRun(context.Background(), s.run.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -554,10 +558,10 @@ func TestDeletingASessionWakesNothingInIt(t *testing.T) {
 
 func TestAwaitedTaskReadElsewhereStillWakesTheRun(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: db, RunStarter: starter})
 	ctx := context.Background()
 	session, run := saveCrashRecoveryRun(t, db, "await-read", core.RunStatusWaitingEvents, false)
 	now := runRecoveryTestTime()

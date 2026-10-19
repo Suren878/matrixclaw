@@ -37,7 +37,7 @@ func runInDir(t *testing.T, app *core.Core, db *store.SQLiteStore, suffix string
 		t.Fatal(err)
 	}
 	var requests []providers.Request
-	app.WithSessionLLMs(scriptedLLMs(&requests, providers.Response{Text: "Hello."}))
+	app.SetSessionLLMs(scriptedLLMs(&requests, providers.Response{Text: "Hello."}))
 	if err := app.ExecuteRun(ctx, run.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func runInDir(t *testing.T, app *core.Core, db *store.SQLiteStore, suffix string
 
 func TestRunInAWorkingDirIsToldItsInstructionsAndState(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	dir := t.TempDir()
 	global := filepath.Join(t.TempDir(), "AGENTS.md")
@@ -56,9 +56,12 @@ func TestRunInAWorkingDirIsToldItsInstructionsAndState(t *testing.T) {
 		}
 	}
 	almaty := time.FixedZone("Almaty", 5*3600)
-	app.WithPromptEnvironment(core.PromptEnvironment{Timezone: almaty, UserInstructions: global}).
-		WithClock(func() time.Time { return time.Date(2026, 10, 18, 22, 0, 0, 0, time.UTC) })
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("read", tools.EffectReadOnly)}))
+	app := core.New(core.Config{
+		Store:             db,
+		PromptEnvironment: core.PromptEnvironment{Timezone: almaty, UserInstructions: global},
+		Clock:             func() time.Time { return time.Date(2026, 10, 18, 22, 0, 0, 0, time.UTC) },
+	})
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("read", tools.EffectReadOnly)}))
 
 	request := runInDir(t, app, db, "coding", dir, false)
 	for _, want := range []string{"Run make check before replying.", "Prefer tabs.", dir} {

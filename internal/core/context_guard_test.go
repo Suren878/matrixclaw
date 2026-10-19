@@ -15,7 +15,7 @@ func TestContextMarkersAreRejectedWhileANativeRunExecutes(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &interruptibleRecoveryRuntime{started: make(chan struct{})}
-	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
 	session, run := saveCrashRecoveryRun(t, db, "guard", core.RunStatusAccepted, false)
 	ctx := context.Background()
 	done := make(chan error, 1)
@@ -42,14 +42,14 @@ func TestContextMarkersAreRejectedWhileANativeRunExecutes(t *testing.T) {
 
 func TestContextBoundariesAreRejectedWhileARunWaitsForApproval(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	mutations := 0
 	mutate, inspect := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(mutate, inspect))
-	app.WithRunStarter(&recordingRunStarter{})
+	app.SetTools(tools.NewRegistry(mutate, inspect))
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-mutate", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil

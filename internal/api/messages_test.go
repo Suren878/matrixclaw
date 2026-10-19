@@ -28,7 +28,7 @@ func newAPITestServer(t *testing.T) (*Server, *store.SQLiteStore) {
 	if err := st.CreateSession(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
-	return New(Deps{Core: core.New(st)}), st
+	return New(Deps{Core: core.New(core.Config{Store: st})}), st
 }
 
 func TestListMessagesAfterSeq(t *testing.T) {

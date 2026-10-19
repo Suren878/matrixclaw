@@ -21,6 +21,14 @@ type executingRunStarter struct {
 	running sync.WaitGroup
 }
 
+// executingCore builds cfg's core with a starter that executes its runs.
+func executingCore(cfg core.Config) (*core.Core, *executingRunStarter) {
+	starter := &executingRunStarter{}
+	cfg.RunStarter = starter
+	starter.app = core.New(cfg)
+	return starter.app, starter
+}
+
 func (s *executingRunStarter) StartRun(ctx context.Context, runID string) error {
 	_ = s.recordingRunStarter.StartRun(ctx, runID)
 	s.running.Add(1)
@@ -76,15 +84,14 @@ func assertTaskStatus(t *testing.T, task core.Task, want core.TaskStatus) {
 
 func TestCancelParentCancelsItsBlockingSubagent(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	starter := &executingRunStarter{app: app}
-	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app, starter := executingCore(core.Config{Store: db})
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	childStarted := newStartSignal()
 	var mu sync.Mutex
 	parentCalls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			return blockUntilCanceled(ctx, childStarted)
 		}
@@ -124,16 +131,15 @@ func TestCancelParentCancelsItsBlockingSubagent(t *testing.T) {
 
 func TestCancelParentCancelsItsAsyncSubagentWithoutFollowUp(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	starter := &executingRunStarter{app: app}
-	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app, starter := executingCore(core.Config{Store: db})
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	childStarted := newStartSignal()
 	parentWaiting := newStartSignal()
 	var mu sync.Mutex
 	parentCalls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			return blockUntilCanceled(ctx, childStarted)
 		}
@@ -182,14 +188,12 @@ func TestCancelParentCancelsItsAsyncSubagentWithoutFollowUp(t *testing.T) {
 
 func TestDeletingASessionStopsTheSubagentsItRunsInTheBackground(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithSessionFiles(t.TempDir())
-	starter := &executingRunStarter{app: app}
-	app.WithRunStarter(starter)
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app, starter := executingCore(core.Config{Store: db, SessionFiles: t.TempDir()})
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	childStarted := newStartSignal()
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			return blockUntilCanceled(ctx, childStarted)
 		}

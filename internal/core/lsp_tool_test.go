@@ -21,11 +21,11 @@ func (lspTool) Execute(context.Context, tools.Call) (tools.Result, error) {
 func TestLSPToolIsOfferedOnlyWhereAServerServesTheProject(t *testing.T) {
 	t.Parallel()
 	for name, served := range map[string]bool{"served": true, "not served": false} {
-		app, db, bash, dir := permissionCore(t)
-		app.WithTools(tools.NewRegistry(append(tools.CoreExecutors(), bash, lspTool{})...))
-		app.WithLSP(func(workingDir string) bool { return served && workingDir == dir })
+		var dir string
+		app, db, bash, dir := permissionCore(t, core.Config{LSPAvailable: func(workingDir string) bool { return served && workingDir == dir }})
+		app.SetTools(tools.NewRegistry(append(tools.CoreExecutors(), bash, lspTool{})...))
 		var offered []string
-		app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 			for _, tool := range request.Tools {
 				offered = append(offered, tool.Name)
 			}

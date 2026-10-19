@@ -178,7 +178,7 @@ func (s *supervisor) RestartDaemon(ctx context.Context, req core.AdminRestartReq
 		if err := s.restartSystemdService(context.Background()); err != nil {
 			log.Printf("matrixclawd daemon restart failed: %v", err)
 			if s.app != nil && delivery.ID != "" {
-				if markErr := s.app.MarkClientDeliveryFailed(context.Background(), delivery, err); markErr != nil {
+				if markErr := s.app.MarkClientDeliveryFailed(context.Background(), delivery.ID, err); markErr != nil {
 					log.Printf("matrixclawd mark restart delivery failed: %v", markErr)
 				}
 			}

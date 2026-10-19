@@ -15,9 +15,9 @@ func TestBlockingSubagentRunsUnderASingleModelSlot(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.SetTuning(core.Tuning{ModelConcurrency: 1})
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	parentCalls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			return providers.Response{Text: "child done"}, nil
 		}

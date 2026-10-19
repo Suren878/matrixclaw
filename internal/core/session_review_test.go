@@ -50,8 +50,9 @@ func newReviewHarness(t *testing.T, cfg setup.SkillsConfig) *reviewHarness {
 
 // core is a daemon at now; call stop before the next one starts.
 func (h *reviewHarness) core(now time.Time) *core.Core {
-	app := core.New(h.db).WithClock(func() time.Time { return now }).WithTools(tools.NewRegistry()).WithSkillLearning(h.skills)
-	app.WithSessionLLMs(twoModelLLMs{
+	app := core.New(core.Config{Store: h.db, Clock: func() time.Time { return now }, SkillLearning: h.skills})
+	app.SetTools(tools.NewRegistry())
+	app.SetSessionLLMs(twoModelLLMs{
 		recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 			return providers.Response{Text: "done"}, nil
 		})},

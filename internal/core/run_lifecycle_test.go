@@ -61,7 +61,7 @@ func (c *Core) runEndWaiters() int {
 
 func TestWaitingForARunThatEndedReturnsAtOnce(t *testing.T) {
 	t.Parallel()
-	c := New(statusStore(RunStatusCompleted))
+	c := New(Config{Store: statusStore(RunStatusCompleted)})
 
 	if err := c.waitRunEnd(context.Background(), "run_done"); err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestWaitingForARunThatEndedReturnsAtOnce(t *testing.T) {
 func TestARunEndWakesItsWaitersAndForgetsThem(t *testing.T) {
 	t.Parallel()
 	store := statusStore(RunStatusRunning)
-	c := New(store)
+	c := New(Config{Store: store})
 	done := make(chan error, 2)
 	for range 2 {
 		go func() { done <- c.waitRunEnd(context.Background(), "run_child") }()
@@ -99,7 +99,7 @@ func TestARunEndWakesItsWaitersAndForgetsThem(t *testing.T) {
 
 func TestAWaiterWaitsForWhatFollowsTheEndItSees(t *testing.T) {
 	t.Parallel()
-	c := New(statusStore(RunStatusCompleted))
+	c := New(Config{Store: statusStore(RunStatusCompleted)})
 	c.beginRunEnd("run_child")
 	done := make(chan error, 1)
 	go func() { done <- c.waitRunEnd(context.Background(), "run_child") }()
@@ -121,7 +121,7 @@ func TestAWaiterWaitsForWhatFollowsTheEndItSees(t *testing.T) {
 
 func TestAWaiterThatStopsIsForgotten(t *testing.T) {
 	t.Parallel()
-	c := New(statusStore(RunStatusWaitingApproval))
+	c := New(Config{Store: statusStore(RunStatusWaitingApproval)})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- c.waitRunEnd(ctx, "run_child") }()
@@ -159,7 +159,7 @@ func (failingFollowUpStore) ListTasks(context.Context, TaskFilter) ([]Task, erro
 
 func TestARunEndWakesItsWaitersWhenTheStepsAfterItFail(t *testing.T) {
 	t.Parallel()
-	c := New(failingFollowUpStore{statusStore(RunStatusRunning)})
+	c := New(Config{Store: failingFollowUpStore{statusStore(RunStatusRunning)}})
 	done := make(chan error, 1)
 	go func() { done <- c.waitRunEnd(context.Background(), "run_child") }()
 	for c.runEndWaiters() < 1 {

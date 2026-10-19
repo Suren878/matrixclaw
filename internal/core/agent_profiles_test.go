@@ -72,7 +72,7 @@ func TestAgentProfilesLayerUserAndProjectFiles(t *testing.T) {
 	writeAgentFile(t, projectDir, "shared.md", "---\ndescription: from the project\n---\nProject version.")
 	writeAgentFile(t, projectDir, "plan.md", "---\nreadonly: false\n---\nI plan and edit.")
 	writeAgentFile(t, projectDir, "broken.md", "no frontmatter")
-	c := New(nil).WithPromptEnvironment(PromptEnvironment{AgentsDir: userDir})
+	c := New(Config{PromptEnvironment: PromptEnvironment{AgentsDir: userDir}})
 	sub := filepath.Join(project, "pkg", "deep")
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)

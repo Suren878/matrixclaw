@@ -25,14 +25,14 @@ func twoStepRun(t *testing.T, app *core.Core, db *store.SQLiteStore, suffix stri
 	t.Helper()
 	ctx := context.Background()
 	session, run := saveCrashRecoveryRun(t, db, suffix, core.RunStatusAccepted, false)
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("change", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("change", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
 		if err := change(ctx, session.ID); err != nil {
 			return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 		}
 		return tools.Result{Content: "changed"}, nil
 	}}))
 	var requests []providers.Request
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		requests = append(requests, request)
 		if len(requests) == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call_change", Name: "change", Arguments: json.RawMessage(`{}`)}}}, nil
@@ -79,7 +79,7 @@ func TestTodoAndRuntimeStatusChangesLeaveTheSystemPromptIntact(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	status := "Current runtime status: browser=off"
-	app.WithRuntimeStatusContext(runtimeStatusFunc(func() string { return status }))
+	app.SetRuntimeStatusContext(runtimeStatusFunc(func() string { return status }))
 
 	requests := twoStepRun(t, app, db, "todo", func(ctx context.Context, sessionID string) error {
 		status = "Current runtime status: browser=on"
@@ -103,10 +103,10 @@ func TestRuntimeStatusDescribesTheToolsTheRunWasGiven(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var seen [][]string
-	app.WithRuntimeStatusContext(runtimeStatusRecorder(func(req core.RuntimeStatusContextRequest) { seen = append(seen, req.ToolIDs) }))
+	app.SetRuntimeStatusContext(runtimeStatusRecorder(func(req core.RuntimeStatusContextRequest) { seen = append(seen, req.ToolIDs) }))
 
 	twoStepRun(t, app, db, "frozen_tools", func(context.Context, string) error {
-		app.WithTools(tools.NewRegistry(
+		app.SetTools(tools.NewRegistry(
 			funcTool{spec: recoveryToolSpec("change", tools.EffectReadOnly)},
 			funcTool{spec: recoveryToolSpec("added", tools.EffectReadOnly)},
 		))
@@ -134,9 +134,9 @@ func TestSubagentContextNoteCarriesItsOwnTodo(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
 	var requests []providers.Request
-	app.WithSessionLLMs(scriptedLLMs(&requests,
+	app.SetSessionLLMs(scriptedLLMs(&requests,
 		todoWriteCall("call_child", `[{"content":"Scan the repo","status":"completed"}]`),
 		providers.Response{Text: "Scanned."},
 	))
@@ -163,7 +163,7 @@ func TestContextNoteLeavesOutAFinishedListOfAnEarlierChain(t *testing.T) {
 	noted := func(suffix string, items []todo.Item) bool {
 		t.Helper()
 		var requests []providers.Request
-		app.WithSessionLLMs(scriptedLLMs(&requests, providers.Response{Text: "Paris."}))
+		app.SetSessionLLMs(scriptedLLMs(&requests, providers.Response{Text: "Paris."}))
 		session, run := saveCrashRecoveryRun(t, db, suffix, core.RunStatusAccepted, false)
 		if err := db.SaveSessionTodo(ctx, todo.List{SessionID: session.ID, Items: items, ChainRunID: "run_earlier", UpdatedRunID: "run_earlier"}); err != nil {
 			t.Fatal(err)

@@ -32,10 +32,10 @@ func newCheckpointScenario(t *testing.T, suffix string, script func(step int, re
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not installed")
 	}
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	t.Cleanup(cleanup)
+	app := core.New(core.Config{Store: db, Checkpoints: checkpoint.New(t.TempDir())})
 	dir := t.TempDir()
-	app.WithCheckpoints(checkpoint.New(t.TempDir()))
 	writeFile := funcTool{spec: tools.Spec{ID: "write_file", Description: "write", Effect: tools.EffectMutation, Namespace: "test", Category: tools.CategoryFilesystem, InputJSONSchema: []byte(`{"type":"object"}`)}, fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
 		var input struct{ Path, Content string }
 		if err := json.Unmarshal(call.Args, &input); err != nil {
@@ -46,9 +46,9 @@ func newCheckpointScenario(t *testing.T, suffix string, script func(step int, re
 	inspect := funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		return tools.Result{Content: "inspected"}, nil
 	}}
-	app.WithTools(tools.NewRegistry(append(core.CheckpointToolExecutors(app), writeFile, inspect)...))
+	app.SetTools(tools.NewRegistry(append(core.CheckpointToolExecutors(app), writeFile, inspect)...))
 	step := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		step++
 		return script(step, request), nil
 	})})

@@ -23,11 +23,11 @@ func TestCancelRacingCompletionEndsTheRunOnce(t *testing.T) {
 	for i := range 20 {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
 			t.Parallel()
-			app, db, cleanup := newCrashRecoveryCore(t)
+			db, cleanup := newCrashRecoveryStore(t)
 			defer cleanup()
-			app.WithRunStarter(&recordingRunStarter{})
+			app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 			generating := make(chan struct{})
-			app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
+			app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
 				close(generating)
 				if err := providers.StreamText(ctx, "Done"); err != nil {
 					return providers.Response{}, err
@@ -89,15 +89,15 @@ type restartableDaemon struct {
 func (d *restartableDaemon) start(t *testing.T) (*core.Core, context.CancelFunc) {
 	t.Helper()
 	lifetime, stop := context.WithCancel(context.Background())
-	app := core.New(d.db).WithLifetime(lifetime)
+	app := core.New(core.Config{Store: d.db, Lifetime: lifetime})
 	mutate := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), ask: "write the state", fn: func(context.Context, tools.Call) (tools.Result, error) {
 		d.mu.Lock()
 		d.mutations++
 		d.mu.Unlock()
 		return tools.Result{Content: "mutated"}, nil
 	}}
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate)...))
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate)...))
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			d.mu.Lock()
 			d.children++
