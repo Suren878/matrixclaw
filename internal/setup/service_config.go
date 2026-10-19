@@ -88,10 +88,23 @@ func defaultHTTPAddr() string {
 
 func defaultDBPath() string {
 	if value := strings.TrimSpace(os.Getenv("MATRIXCLAW_DB_PATH")); value != "" {
-		return value
+		return ExpandHome(value)
 	}
 
 	return filepath.Join(xdg.StateHome(), "matrixclaw", "matrixclaw.db")
+}
+
+// ExpandHome replaces a leading "~" or "~/" with the home directory; any other
+// path, or one when the home is unknown, is returned as given.
+func ExpandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	return filepath.Join(home, path[1:])
 }
 
 func DefaultDBPath() string {
