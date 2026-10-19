@@ -67,15 +67,7 @@ up again later without losing anything.
   (MatrixClaw, Codex or Claude Code), blocking or in the background. Agent
   types (`explore`, `plan`, `review`, `verify`, your own), and worktree
   children that work on their own branch and are merged back or dropped.
-- **Coding agent.** Language servers and diagnostics after edits
-([Language servers](docs/LSP.md)), `repo_map` ([Repository map](docs/REPO_MAP.md)),
-file checkpoints with `/undo` and `/rewind` ([Checkpoints](docs/CHECKPOINTS.md)),
-goals ([Goals](docs/GOALS.md)), Claude Code-compatible hooks
-([Hooks](docs/HOOKS.md)), the `full_auto` shell sandbox
-([Shell sandbox](docs/SANDBOX.md); `daemon.sandbox.mode: "off"` opts out) and
-skills with session learning ([Skills](docs/SKILLS.md)).
-
-**External agents.** Codex app-server and Claude Code sessions attach to the
+- **External agents.** Codex app-server and Claude Code sessions attach to the
   same session model.
 - **Todo list, memory and search.** `todo_write` tracks multi-step work;
   `memory` keeps approved durable notes; `session_search` searches past
