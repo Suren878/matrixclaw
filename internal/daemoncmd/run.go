@@ -26,6 +26,7 @@ import (
 	openairealtime "github.com/Suren878/matrixclaw/internal/modules/voice/realtime/providers/openai"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/sandbox"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
 	"github.com/Suren878/matrixclaw/internal/skills"
@@ -129,6 +130,7 @@ func Run(ctx context.Context) error {
 	app.WithRuntimeStatusContext(supervisor)
 	commandEnv := commandEnvironment(bootstrap.Setup, supervisor.appliedConfig)
 	app.WithCommandEnvironment(commandEnv)
+	app.WithSandbox(func() sandbox.Settings { return supervisor.appliedConfig().Daemon.Sandbox })
 	// The agent's file tools may not trust a project's hooks for the owner.
 	hooksTrust := filepath.Join(dataDir(bootstrap.DBPath), "hooks-trust.json")
 	tools.ProtectCredentials(func() []string { return []string{hooksTrust} })

@@ -3,6 +3,7 @@ package setup
 import (
 	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/sandbox"
 )
 
 const CurrentVersion = 4
@@ -65,6 +66,8 @@ type DaemonConfig struct {
 	BackgroundAgents int `json:"background_agents,omitempty"`
 	// Checkpoints controls the file checkpoints taken before tool batches.
 	Checkpoints CheckpointsConfig `json:"checkpoints,omitzero"`
+	// Sandbox confines the agent's shell commands (docs/SANDBOX.md).
+	Sandbox sandbox.Settings `json:"sandbox,omitzero"`
 }
 
 // CheckpointsConfig controls file checkpoints (docs/CHECKPOINTS.md); they are

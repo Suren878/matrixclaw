@@ -58,6 +58,14 @@ comes from the chat Telegram reports, never from message text.
 - After a crash, a mutating call that may have started is never re-run without
   a fresh approval.
 - Read-only subagents cannot run mutating tools.
+- The shell sandbox (docs/SANDBOX.md) confines `bash` commands nobody
+  approves: in `full_auto` they write only the working directory, its git
+  directories, the temporary directories and package caches; plan mode and
+  read-only subagents write no project file. `daemon.sandbox` sets a mode for
+  every session and can cut the network. It uses bubblewrap, Landlock or
+  sandbox-exec; where none works, unattended commands run unconfined unless a
+  mode is set, and `/status` says so. It limits writes, not reads: a confined
+  command can still read your keys.
 - External agent sessions (Codex, Claude Code) run with the agent's own
   sandbox: `full_auto` gives them full access without approvals.
 

@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+
+	"github.com/Suren878/matrixclaw/internal/sandbox"
 )
 
 // Process is a running shell command; its process group has the ID of its PID.
@@ -30,16 +32,17 @@ type Leader struct {
 	Start  string
 }
 
-// Start runs command with bash -c in dir and env (nil inherits the daemon's),
-// in a process group of its own and with stdin from /dev/null, its stdout and
-// stderr going to out until every process that has them, the shell and the
-// commands it left running, closed them.
-func Start(command, dir string, env []string, out *Output) (*Process, error) {
+// Start runs command with bash -c in dir and env (nil inherits the daemon's)
+// under box, a resolved sandbox policy, in a process group of its own and with
+// stdin from /dev/null, its stdout and stderr going to out until every process
+// that has them, the shell and the commands it left running, closed them.
+func Start(command, dir string, env []string, box sandbox.Policy, out *Output) (*Process, error) {
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command("bash", "-c", command)
+	argv := box.Wrap([]string{"bash", "-c", command})
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = dir
 	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

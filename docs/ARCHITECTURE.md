@@ -43,6 +43,7 @@ flowchart LR
 | `internal/permission` | permission rules, subjects, bash parsing, mode presets |
 | `internal/glob` | the one glob matcher (`**`, classes, braces) and `.gitignore` rules, for path rules and the search tools |
 | `internal/shelltask` | background shell processes and their output files |
+| `internal/sandbox` | the shell sandbox: modes, bubblewrap, the Landlock helper, sandbox-exec (see [SANDBOX.md](SANDBOX.md)) |
 | `internal/hooks` | user hooks (Claude Code protocol) and the checks after edits (see [HOOKS.md](HOOKS.md)) |
 | `internal/webtools` | `web_search` and `web_fetch` |
 | `internal/modules` | module lifecycle, settings contract, and the modules: `storage`, `delivery`, `geo`, `web`, `voice` (+ `voice/realtime`), `telephony`, `browser`, `mcp`, `skills`; `localruntime` holds local voice/browser runtimes |
@@ -283,8 +284,9 @@ changes), so the cached prefix survives between runs.
   else the git root, else the working directory. 32 KiB in total; later files
   are cut or left out with a note.
 - The context note starts with the run context, read once when the run
-  starts: the date in `daemon.timezone`, the client, the permission mode and,
-  for coding runs, the git branch, status (20 lines) and last 5 commits.
+  starts: the date in `daemon.timezone`, the client, the permission mode, the
+  shell sandbox when commands are confined and, for coding runs, the git
+  branch, status (20 lines) and last 5 commits.
 
 ## Providers
 
@@ -332,6 +334,14 @@ provider and model.
 - Shutdown stops the background commands (`Core.StopShellTasks`); the next
   start marks their tasks `lost`. Compaction deletes the logs of ended tasks
   that no later message names.
+- Commands may run under the shell sandbox (`internal/sandbox`, see
+  [SANDBOX.md](SANDBOX.md)): `daemon.sandbox` and the session decide the
+  mode (by default `workspace_write` in `full_auto`, `read_only` in plan mode
+  and read-only subagents), `core.commandSandbox` resolves it over the
+  session's working directory, and `shelltask.Start` wraps `bash -c` in
+  bubblewrap, the daemon's own Landlock helper (`matrixclawd __sandbox`) or
+  sandbox-exec. A failure that reads like a refused write gets a hint in the
+  result; hooks run unconfined.
 - A read-only subagent gets `bash` as a read-only tool that never asks
   (`tools.ReadOnlySpec`): only plain lines of read-only commands
   (`permission.CheckReadOnly`) whose paths stay inside its working directory,
@@ -509,7 +519,7 @@ through read-only subagents.
 - Loading is strict: a key the struct does not declare, or a stored value
   outside its closed list (provider type, tool use mode, runtime modes,
   browser and voice providers, external agent ids, web search provider, MCP
-  transport), fails with an error naming the key. A file is never
+  transport, sandbox mode), fails with an error naming the key. A file is never
   reinterpreted on read; there are no value aliases. A version 3 file (v0.2.0)
   is converted to version 4 once on load (`internal/setup/legacy_v3.go`): the
   original is kept as `setup.json.pre-v4`, the keys v0.2.0 still wrote are

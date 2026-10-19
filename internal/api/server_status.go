@@ -32,6 +32,7 @@ func (s *Server) collectServerStatus() core.ServerStatus {
 		MemoryUsedBytes:      usedMemory(total, available),
 		CPUUsedPercent:       cpuUsed,
 		CPUKnown:             cpuKnown,
+		Sandbox:              s.Core.SandboxStatus(),
 	}
 }
 

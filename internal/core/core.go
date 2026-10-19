@@ -13,6 +13,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/ids"
+	"github.com/Suren878/matrixclaw/internal/sandbox"
 )
 
 type Core struct {
@@ -60,6 +61,8 @@ type Core struct {
 	backgroundTasks int
 	// commandEnv is the environment of shell commands; nil inherits the daemon's.
 	commandEnv func() []string
+	// sandbox confines shell commands; nil leaves them unconfined.
+	sandbox func() sandbox.Settings
 	// hooks runs the user's hooks and the checks after edits; nil runs none.
 	hooks *hooks.Runner
 	// backgroundAgents bounds the background subagents of one session.

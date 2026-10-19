@@ -88,7 +88,8 @@ func unknownKeys(raw any, t reflect.Type, path string) []string {
 var runtimeModes = []string{"per_task", "always_running"}
 
 // checkStoredValues rejects stored values outside their closed lists, hooks
-// that cannot run and diagnostics keys that are not file extensions.
+// that cannot run, diagnostics keys that are not file extensions and sandbox
+// paths that are not absolute.
 func checkStoredValues(cfg Config) error {
 	var problems []error
 	check := func(key, value string, allowed ...string) {
@@ -145,6 +146,9 @@ func checkStoredValues(cfg Config) error {
 	}
 	if err := cfg.Diagnostics.Validate(); err != nil {
 		problems = append(problems, fmt.Errorf("diagnostics: %w", err))
+	}
+	if err := cfg.Daemon.Sandbox.Validate(); err != nil {
+		problems = append(problems, fmt.Errorf("daemon.sandbox: %w", err))
 	}
 	return errors.Join(problems...)
 }
