@@ -516,7 +516,7 @@ func toolResultContent(request providers.Request, callID string) string {
 	return ""
 }
 
-func TestSteerDuringToolIsAppendedToThatToolResult(t *testing.T) {
+func TestSteerDuringToolReachesTheNextRequestAsAUserMessage(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
@@ -532,15 +532,14 @@ func TestSteerDuringToolIsAppendedToThatToolResult(t *testing.T) {
 		}
 	}}))
 	calls := 0
-	var sawGuidance bool
+	var sawSteer bool
 	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
 		}
-		for _, message := range request.Messages {
-			sawGuidance = sawGuidance || (message.ToolCallID == "call-1" && strings.Contains(message.Content, "User guidance: focus on logs"))
-		}
+		last := request.Messages[len(request.Messages)-1]
+		sawSteer = last.Role == "user" && last.Content == "focus on logs"
 		return providers.Response{Text: "Done."}, nil
 	})})
 	session, run := saveCrashRecoveryRun(t, db, "steer", core.RunStatusAccepted, false)
@@ -558,17 +557,13 @@ func TestSteerDuringToolIsAppendedToThatToolResult(t *testing.T) {
 	}
 
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
-	if !sawGuidance {
-		t.Fatal("next model request lacks the steer guidance in the tool result")
+	if !sawSteer {
+		t.Fatal("the next model request does not end with the steer as a user message")
 	}
-	found := false
 	for _, message := range sessionMessages(t, db, session.ID) {
-		if message.Role == transcript.MessageRoleTool && message.Content == "inspected\n\nUser guidance: focus on logs" {
-			found = true
+		if message.Role == transcript.MessageRoleTool && message.Content != "inspected" {
+			t.Fatalf("stored tool result = %q, want it unchanged", message.Content)
 		}
-	}
-	if !found {
-		t.Fatal("stored tool result does not carry the steer guidance")
 	}
 	pending, err := db.ListPendingSessionInputs(context.Background(), session.ID)
 	if err != nil || len(pending) != 0 {

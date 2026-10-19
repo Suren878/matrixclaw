@@ -407,30 +407,32 @@ func TestUnknownToolIsReturnedAsErrorResult(t *testing.T) {
 	}
 }
 
-func TestSteerIsAppendedToTheNextToolResult(t *testing.T) {
+func TestSteerDuringAToolReachesTheNextStepAsAUserMessage(t *testing.T) {
 	f := agenttest.NewFixture()
-	f.Tools.Funcs["read"] = readTool
-	f.Inbox.SteerTexts = []string{"check the logs"}
+	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result {
+		f.Inbox.SteerTexts = append(f.Inbox.SteerTexts, "check the logs")
+		return readTool(call)
+	}
 	model := agenttest.NewScriptedModel(calls(call("r1", "read")), text("Done."))
 
 	run(t, f, model)
 
-	result, _ := f.Journal.Result("r1")
-	if result.Content != "file body\n\nUser guidance: check the logs" || len(f.Inbox.SteerTexts) != 0 {
+	if result, _ := f.Journal.Result("r1"); result.Content != "file body" || len(f.Inbox.SteerTexts) != 0 {
 		t.Fatalf("result = %q steers left = %v", result.Content, f.Inbox.SteerTexts)
 	}
-	if guidance := result.Parts[0].ToolResult.Guidance; len(guidance) != 1 || guidance[0] != "check the logs" {
-		t.Fatalf("recorded guidance = %q", guidance)
-	}
-	if got := toolContent(model.Requests()[1], "r1"); !strings.Contains(got, "User guidance: check the logs") {
-		t.Fatalf("request tool content = %q", got)
+	messages := model.Requests()[1].Messages
+	last := messages[len(messages)-1]
+	if last.Role != "user" || last.Content != "check the logs" || toolContent(model.Requests()[1], "r1") != "file body" {
+		t.Fatalf("next request ends with %+v", last)
 	}
 }
 
-func TestSteerStaysPendingWhenItsToolResultIsNotWritten(t *testing.T) {
+func TestSteerStaysPendingWhenTheRunStopsBeforeItsNextStep(t *testing.T) {
 	f := agenttest.NewFixture()
-	f.Tools.Funcs["read"] = readTool
-	f.Inbox.SteerTexts = []string{"check the logs"}
+	f.Tools.Funcs["read"] = func(call tools.Call) tools.Result {
+		f.Inbox.SteerTexts = append(f.Inbox.SteerTexts, "check the logs")
+		return readTool(call)
+	}
 	f.Journal.OnAppend = func(msg transcript.Message) error {
 		if msg.Role == transcript.MessageRoleTool {
 			return errors.New("disk full")
@@ -444,7 +446,7 @@ func TestSteerStaysPendingWhenItsToolResultIsNotWritten(t *testing.T) {
 		t.Fatalf("outcome = %+v", outcome)
 	}
 	if len(f.Inbox.SteerTexts) != 1 || f.Inbox.SteerTexts[0] != "check the logs" {
-		t.Fatalf("steers left = %v, want the unwritten steer still pending", f.Inbox.SteerTexts)
+		t.Fatalf("steers left = %v, want the steer still pending", f.Inbox.SteerTexts)
 	}
 }
 

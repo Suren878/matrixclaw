@@ -170,9 +170,6 @@ func elideResults(message transcript.Message, calls map[string]transcript.ToolCa
 		}
 		result := *part.ToolResult
 		result.Content = elidedResultNote(calls[strings.TrimSpace(result.ToolCallID)], result, tokens)
-		for _, guidance := range result.Guidance {
-			result.Content += "\n\nUser guidance: " + guidance
-		}
 		parts[i].ToolResult = &result
 	}
 	message.Parts = parts
@@ -326,15 +323,10 @@ func evenShares(refs []resultRef, budget int) []resultRef {
 	return cut
 }
 
-// cappedResult is result's content within about tokens, still carrying the
-// user guidance steered into it and naming the file with the full output.
+// cappedResult is result's content within about tokens, naming the file with
+// the full output.
 func cappedResult(result transcript.ToolResultPart, tokens int) string {
 	content := HeadTail(result.Content, tokens)
-	for _, guidance := range result.Guidance {
-		if !strings.Contains(content, guidance) {
-			content += "\n\nUser guidance: " + guidance
-		}
-	}
 	if result.OutputPath != "" {
 		content += "\n\n[cut to fit this round's results in the context; the full output is in " + result.OutputPath + "]"
 	}

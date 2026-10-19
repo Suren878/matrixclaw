@@ -166,7 +166,7 @@ func TestSummaryKeepsTheAssignmentStepsAndWholeToolSteps(t *testing.T) {
 	if len(marks) != 1 || marks[0].Compaction.CoversThroughSeq != r2.Seq {
 		t.Fatalf("boundaries = %+v", marks)
 	}
-	if kept := marks[0].Compaction.Kept; len(kept) != 2 || kept[0] != "User: do the task" || kept[1] != "User guidance: focus on the parser" {
+	if kept := marks[0].Compaction.Kept; len(kept) != 2 || kept[0] != "User: do the task" || kept[1] != "User: focus on the parser" {
 		t.Fatalf("kept = %q", kept)
 	}
 	assertBoundaryAndLastToolStep(t, requests[4])
@@ -181,7 +181,7 @@ func TestSummaryKeepsTheAssignmentStepsAndWholeToolSteps(t *testing.T) {
 func assertBoundaryAndLastToolStep(t *testing.T, request providers.Request) {
 	t.Helper()
 	messages := request.Messages
-	if len(messages) != 3 || !strings.Contains(messages[0].Content, "User: do the task") || !strings.Contains(messages[0].Content, "User guidance: focus on the parser") {
+	if len(messages) != 3 || !strings.Contains(messages[0].Content, "User: do the task") || !strings.Contains(messages[0].Content, "User: focus on the parser") {
 		t.Fatalf("request messages = %+v", messages)
 	}
 	if len(messages[1].ToolCalls) != 1 || messages[1].ToolCalls[0].ID != "r3" || messages[2].ToolCallID != "r3" {
@@ -448,7 +448,7 @@ func TestElisionThenSummaryKeepsTheRequestOrderAndPrefix(t *testing.T) {
 		}
 	}
 	elided := requests[6]
-	if extendsPrefix(requests[5], elided) || !strings.HasPrefix(toolContent(elided, "read1"), "[output of read() hidden") || !strings.HasSuffix(toolContent(elided, "read1"), "User guidance: focus on the parser") {
+	if extendsPrefix(requests[5], elided) || !strings.HasPrefix(toolContent(elided, "read1"), "[output of read() hidden") || !strings.HasSuffix(toolContent(elided, "read1"), "call again if needed]") {
 		t.Fatalf("elided request read1 = %q", toolContent(elided, "read1"))
 	}
 
@@ -456,7 +456,7 @@ func TestElisionThenSummaryKeepsTheRequestOrderAndPrefix(t *testing.T) {
 	if len(retry) != 4 {
 		t.Fatalf("retry messages = %d, want summary, the newest step and the context note", len(retry))
 	}
-	if summary := retry[0].Content; retry[0].Role != "user" || !strings.Contains(summary, "SUMMARY\n\nKept verbatim from that part:\n\nUser: do the task\n\nUser guidance: focus on the parser") {
+	if summary := retry[0].Content; retry[0].Role != "user" || !strings.Contains(summary, "SUMMARY\n\nKept verbatim from that part:\n\nUser: do the task\n\nUser: focus on the parser") {
 		t.Fatalf("retry starts with %q", summary)
 	}
 	if step, result := retry[1], retry[2]; len(step.ToolCalls) != 1 || step.ToolCalls[0].ID != "read6" || result.ToolCallID != "read6" || !strings.HasPrefix(result.Content, "read6 x") {

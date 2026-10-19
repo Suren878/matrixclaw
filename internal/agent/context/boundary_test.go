@@ -116,15 +116,15 @@ func TestTailStartKeepsAtLeastTheNewestTurn(t *testing.T) {
 func TestKeptHoldsTheRunsUserTextAndSteersVerbatim(t *testing.T) {
 	result := toolStep(3, "c1", "output")[2]
 	result.RunID = "r1"
-	result.Parts[0].ToolResult.Guidance = []string{"look at the logs"}
 	covered := []transcript.Message{
 		textMessage(1, transcript.MessageRoleUser, "r1", "second ask"),
 		textMessage(2, transcript.MessageRoleUser, "r0", "another run"),
 		result,
+		textMessage(4, transcript.MessageRoleUser, "r1", "look at the logs"),
 	}
 
 	got := Kept(&transcript.Compaction{RunID: "r1", Kept: []string{"User: first ask"}}, covered, []string{"r1"})
-	want := []string{"User: first ask", "User: second ask", "User guidance: look at the logs"}
+	want := []string{"User: first ask", "User: second ask", "User: look at the logs"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Kept = %q, want %q", got, want)
 	}

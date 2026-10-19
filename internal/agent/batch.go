@@ -245,28 +245,20 @@ func (b *batch) record(done toolsched.Done[callOutcome]) (bool, error) {
 }
 
 // journal writes the results ready so far in call order, up to the first call
-// still running; a call waiting for approval has none. Once nothing runs, this
-// pass ends the batch, and its last result carries the pending steers.
+// still running; a call waiting for approval has none.
 func (b *batch) journal(ctx context.Context) error {
-	last := -1
-	for i := b.next - 1; i >= b.journaled && b.sched.Running() == 0 && last < 0; i-- {
-		if state := b.calls[i].state; state == callFinished || state == callRejected {
-			last = i
-		}
-	}
 	for ; b.journaled < b.next; b.journaled++ {
 		c := b.calls[b.journaled]
-		steers := b.journaled == last
 		switch c.state {
 		case callRunning:
 			return nil
 		case callFinished:
-			if err := b.r.finishCall(ctx, c.req, c.result, steers); err != nil {
+			if err := b.r.finishCall(ctx, c.req, c.result); err != nil {
 				return err
 			}
 			c.state = callJournaled
 		case callRejected:
-			if err := b.r.rejectCall(ctx, c.req, c.result, steers); err != nil {
+			if err := b.r.rejectCall(ctx, c.req, c.result); err != nil {
 				return err
 			}
 			c.state = callJournaled
@@ -314,32 +306,24 @@ func (b *batch) stopped(ctx context.Context, err error) error {
 }
 
 // keep journals the calls of a stopped batch that have no result yet: finished
-// and rejected ones with theirs, the others with rest unless it is nil. The
-// last result it writes carries the pending steers.
+// and rejected ones with theirs, the others with rest unless it is nil.
 func (b *batch) keep(ctx context.Context, rest *tools.Result) error {
-	last := -1
-	for i, c := range b.calls {
-		if !b.r.history.hasResult(c.req.id) && (rest != nil || c.state == callFinished || c.state == callRejected) {
-			last = i
-		}
-	}
-	for i, c := range b.calls {
+	for _, c := range b.calls {
 		if b.r.history.hasResult(c.req.id) {
 			continue
 		}
-		steers := i == last
 		var err error
 		switch {
 		case c.state == callFinished:
-			err = b.r.finishCall(ctx, c.req, c.result, steers)
+			err = b.r.finishCall(ctx, c.req, c.result)
 		case c.state == callRejected:
-			err = b.r.rejectCall(ctx, c.req, c.result, steers)
+			err = b.r.rejectCall(ctx, c.req, c.result)
 		case rest == nil:
 			continue
 		case c.state == callWaiting:
-			err = b.r.rejectCall(ctx, c.req, *rest, steers)
+			err = b.r.rejectCall(ctx, c.req, *rest)
 		default:
-			err = b.r.finishCall(ctx, c.req, *rest, steers)
+			err = b.r.finishCall(ctx, c.req, *rest)
 		}
 		if err != nil {
 			return err

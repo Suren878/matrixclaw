@@ -39,7 +39,7 @@ func (r *run) recover(ctx context.Context) error {
 		case SettleAsk:
 			err = r.Approvals.Request(ctx, Pending{RunID: r.task.RunID, SessionID: r.task.SessionID, ToolCallID: req.id, ToolName: req.name, Request: recovery.Request})
 		case SettleAnswer:
-			err = r.finishCall(ctx, req, recovery.Result, true)
+			err = r.finishCall(ctx, req, recovery.Result)
 		default:
 			err = fmt.Errorf("agent: unknown settle %q for call %s", recovery.Settle, req.id)
 		}

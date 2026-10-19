@@ -115,8 +115,6 @@ type ToolResultPart struct {
 	Metadata   json.RawMessage `json:"metadata,omitempty"`
 	// Status is success, error or neutral; empty is success.
 	Status string `json:"status,omitempty"`
-	// Guidance is user steering delivered with this result; Content carries it too.
-	Guidance []string `json:"guidance,omitempty"`
 	// OutputPath is the file holding the full output when Content was cut.
 	OutputPath string `json:"output_path,omitempty"`
 }

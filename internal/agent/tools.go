@@ -118,11 +118,11 @@ func (r *run) resumeDecided(ctx context.Context) (bool, error) {
 // back with an error, so the model re-plans instead of running them.
 func (r *run) denyCall(ctx context.Context, req callRequest, reason string) error {
 	for _, held := range r.deferredCalls(req.id) {
-		if err := r.rejectCall(ctx, held, tools.Result{Content: fmt.Sprintf("Not run: an earlier call in this batch was denied (%s).", req.name), Status: tools.ResultStatusError}, false); err != nil {
+		if err := r.rejectCall(ctx, held, tools.Result{Content: fmt.Sprintf("Not run: an earlier call in this batch was denied (%s).", req.name), Status: tools.ResultStatusError}); err != nil {
 			return err
 		}
 	}
-	return r.finishCall(ctx, req, DenialResult(reason), true)
+	return r.finishCall(ctx, req, DenialResult(reason))
 }
 
 // deferredCalls lists the run's calls still held back, in call order: behind
@@ -207,28 +207,28 @@ func (r *run) toolCall(req callRequest) tools.Call {
 }
 
 // rejectCall journals a call that did not run with result, an error the model
-// can act on; steers merges the pending steers into it.
-func (r *run) rejectCall(ctx context.Context, req callRequest, result tools.Result, steers bool) error {
+// can act on.
+func (r *run) rejectCall(ctx context.Context, req callRequest, result tools.Result) error {
 	if err := r.writeCall(ctx, req, true); err != nil {
 		return err
 	}
-	return r.answerCall(ctx, req, result, steers)
+	return r.answerCall(ctx, req, result)
 }
 
 // answerCall journals the result of a call already journaled as finished.
-func (r *run) answerCall(ctx context.Context, req callRequest, result tools.Result, steers bool) error {
-	if _, err := r.appendResult(ctx, req, result, steers); err != nil {
+func (r *run) answerCall(ctx context.Context, req callRequest, result tools.Result) error {
+	if _, err := r.appendResult(ctx, req, result); err != nil {
 		return err
 	}
 	r.observe(req, result)
 	return nil
 }
 
-func (r *run) finishCall(ctx context.Context, req callRequest, result tools.Result, steers bool) error {
+func (r *run) finishCall(ctx context.Context, req callRequest, result tools.Result) error {
 	if err := r.writeCall(ctx, req, true); err != nil {
 		return err
 	}
-	message, err := r.appendResult(ctx, req, result, steers)
+	message, err := r.appendResult(ctx, req, result)
 	if err != nil {
 		return err
 	}
@@ -237,36 +237,13 @@ func (r *run) finishCall(ctx context.Context, req callRequest, result tools.Resu
 	return nil
 }
 
-// appendResult writes a tool result, with the pending steer guidance merged
-// into it when steers is set. The steers are consumed only once the result is
-// written, even if ctx stops then.
-func (r *run) appendResult(ctx context.Context, req callRequest, result tools.Result, steers bool) (transcript.Message, error) {
+// appendResult writes a tool result.
+func (r *run) appendResult(ctx context.Context, req callRequest, result tools.Result) (transcript.Message, error) {
 	message, err := ToolResultMessage(r.NewID("tool_result"), r.task.SessionID, r.task.RunID, req.id, req.name, result, r.Now())
 	if err != nil {
 		return transcript.Message{}, err
 	}
-	var ids []string
-	if steers {
-		pending, err := r.Inbox.Steers(ctx)
-		if err != nil {
-			return transcript.Message{}, err
-		}
-		for _, steer := range pending {
-			if len(steer.Images) > 0 {
-				// A tool result carries no images; the next step journals it.
-				continue
-			}
-			appendUserGuidanceToToolResult(&message, steer.Text)
-			ids = append(ids, steer.ID)
-		}
-	}
-	if err := r.history.append(ctx, message); err != nil {
-		return transcript.Message{}, err
-	}
-	if len(ids) == 0 {
-		return message, nil
-	}
-	return message, r.Inbox.ConsumeSteers(context.WithoutCancel(ctx), ids)
+	return message, r.history.append(ctx, message)
 }
 
 func (r *run) callMessage(req callRequest, finished bool) transcript.Message {
@@ -285,33 +262,4 @@ func invalidArgsText(args []byte) string {
 		text = append(text[:quoted], '…')
 	}
 	return "Invalid arguments: not valid JSON, so the call did not run. Send it again with a JSON object as its arguments. Received: " + string(text)
-}
-
-func appendUserGuidanceToToolResult(message *transcript.Message, text string) {
-	text = strings.TrimSpace(text)
-	if message == nil || text == "" {
-		return
-	}
-	for i := range message.Parts {
-		result := message.Parts[i].ToolResult
-		if result == nil {
-			continue
-		}
-		result.Content = appendGuidanceBlock(result.Content, "User guidance: "+text)
-		result.Guidance = append(result.Guidance, text)
-		message.Content = normalizeToolContent(result.Content)
-		return
-	}
-}
-
-func appendGuidanceBlock(content string, guidance string) string {
-	content = strings.TrimSpace(content)
-	guidance = strings.TrimSpace(guidance)
-	if guidance == "" {
-		return content
-	}
-	if content == "" {
-		return guidance
-	}
-	return content + "\n\n" + guidance
 }

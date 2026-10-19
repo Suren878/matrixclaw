@@ -94,15 +94,6 @@ func Kept(previous *transcript.Compaction, covered []transcript.Message, runIDs 
 			if text := strings.TrimSpace(message.Content); text != "" {
 				kept = append(kept, "User: "+HeadTail(text, keptTextTokens))
 			}
-			continue
-		}
-		for _, part := range message.Parts {
-			if part.ToolResult == nil {
-				continue
-			}
-			for _, guidance := range part.ToolResult.Guidance {
-				kept = append(kept, "User guidance: "+HeadTail(guidance, keptTextTokens))
-			}
 		}
 	}
 	return kept

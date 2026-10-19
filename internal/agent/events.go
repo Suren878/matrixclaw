@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -97,7 +96,7 @@ func (r *run) resumeAwait(ctx context.Context) (bool, error) {
 	r.state.Await = nil
 	switch wake {
 	case AwaitSteered:
-		return false, r.appendSteers(ctx, steers)
+		return false, r.appendSteers(ctx)
 	case AwaitTimedOut:
 		return false, r.appendEngineMessage(ctx, transcript.OriginEngine, awaitTimeoutText(await.TaskIDs))
 	}
@@ -106,21 +105,14 @@ func (r *run) resumeAwait(ctx context.Context) (bool, error) {
 
 // appendImageSteers journals the pending steers that came with images, which
 // no tool result can carry, before the next model call.
-func (r *run) appendImageSteers(ctx context.Context) error {
+// appendSteers journals the pending steer input as one user message before
+// the next step and consumes it; inside a tool result the model would take it
+// for text the tool returned.
+func (r *run) appendSteers(ctx context.Context) error {
 	steers, err := r.Inbox.Steers(ctx)
-	if err != nil {
+	if err != nil || len(steers) == 0 {
 		return err
 	}
-	steers = slices.DeleteFunc(steers, func(steer Steer) bool { return len(steer.Images) == 0 })
-	if len(steers) == 0 {
-		return nil
-	}
-	return r.appendSteers(ctx, steers)
-}
-
-// appendSteers journals steer input that no tool result can carry as one user
-// message and consumes it.
-func (r *run) appendSteers(ctx context.Context, steers []Steer) error {
 	texts := make([]string, 0, len(steers))
 	ids := make([]string, 0, len(steers))
 	var images []transcript.MessagePart
