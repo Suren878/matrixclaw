@@ -681,8 +681,9 @@ the configured targets (the owner's Telegram chat), once per chat. `reply_once` 
 that takes a single reply (Telegram inline and guest). Restart notices are
 `held` until the next start releases them.
 
-## Planned after v0.2.0
+## Planned
 
-- Delete the one-time v0.2 conversions, `internal/store/legacy_v02.go` (the
-  database) and `internal/setup/legacy_v3.go` (setup.json), one release after
-  they shipped.
+- Delete the one-time conversions, `internal/store/legacy_v02.go` (the
+  database) and `internal/setup/legacy_v3.go` (setup.json), in the release
+  after the one that first ran them (v0.2.1); installs older than v0.2.0 must
+  upgrade through v0.2.0 or v0.2.1 before that.

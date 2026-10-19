@@ -21,7 +21,14 @@ gofmt -l $(git ls-files '*.go')   # must print nothing
 go test ./...
 go build ./...
 go vet ./...
-golangci-lint run                 # v2, .golangci.yml
+golangci-lint run ./...           # v2, .golangci.yml
+```
+
+CI's gofmt check covers every `.go` file (`find . -name '*.go' | xargs gofmt -l`
+must print nothing). Also run the dead-code check before sending a change:
+
+```bash
+deadcode -test ./...              # golang.org/x/tools/cmd/deadcode: unreachable functions
 ```
 
 Run `go test -race` on the engine, core, store and shelltask packages after

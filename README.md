@@ -28,12 +28,34 @@ up again later without losing anything.
   subscription (OAuth), Anthropic, Gemini, Qwen, and presets for DeepSeek,
   OpenRouter, Vercel AI Gateway, NVIDIA NIM, Hugging Face, NovitaAI, GMI Cloud,
   StepFun, Ollama Cloud, Kilo Code, xAI / Grok, Z.AI / GLM, MiniMax, Kimi,
-  AiHubMix, plus custom endpoints. Provider and model are chosen per session.
+  AiHubMix, plus custom endpoints. Provider and model are chosen per session:
+  `/provider` opens a provider's model picker, and **Default for new sessions**
+  sets the owner's default.
 - **Tools with approvals.** File, shell, web and MCP tools pause before risky
   actions; allow / ask / deny rules per session or globally decide what asks.
   A denial with a reason goes back to the model instead of failing the run.
+- **Autonomous coding agent.** A coding run gets an operating manual and your
+  project instructions (`AGENTS.md` or `CLAUDE.md`, `.matrixclaw/instructions.md`),
+  and a git snapshot of the working directory. Edits are robust (tolerant
+  matching, read-before-edit guards, atomic writes); every edit is followed by
+  diagnostics (gofmt, `go vet`, `tsc`, `cargo check`, ... and language servers
+  through the `lsp` tool), and `repo_map` gives a ranked map of a code base. A
+  run that changed files and never built or tested is asked once to verify.
+  See [Language servers](docs/LSP.md) and [Repository map](docs/REPO_MAP.md).
+- **Checkpoints.** A shadow git snapshot before each tool batch that may change
+  files; `/undo` reverts the last run's changes, `/rewind` goes back to any
+  checkpoint. See [Checkpoints](docs/CHECKPOINTS.md).
 - **Plan mode.** `/plan` lets the agent explore read-only and present a plan
   for approval; approving it lets the agent carry the plan out in the same run.
+- **Goals.** `/goal <objective> --check "go test ./..."` keeps starting runs
+  until the model reports the goal done with evidence, the check passes and no
+  todo is open. See [Goals](docs/GOALS.md).
+- **Hooks.** Claude Code-compatible hooks (PreToolUse, PostToolUse, Stop,
+  SessionStart, ...) from setup.json or a trusted project's
+  `.matrixclaw/hooks.json`. See [Hooks](docs/HOOKS.md).
+- **Shell sandbox.** In `full_auto`, commands may write only the working
+  directory, its `.git`, temporary directories and package caches (bubblewrap,
+  Landlock or sandbox-exec). See [Shell sandbox](docs/SANDBOX.md).
 - **Edit tools per model.** GPT-5 and Codex models edit with `apply_patch`, the
   multi-file patch format they were trained on; other models use `edit` and
   `multiedit`.
@@ -42,12 +64,24 @@ up again later without losing anything.
   calls in parallel, and keeps long commands in the background. `/continue`
   resumes a run that stopped early.
 - **Subagents.** The `agent` tool hands bounded tasks to child runs
-  (MatrixClaw, Codex or Claude Code), blocking or in the background.
-- **External agents.** Codex app-server and Claude Code sessions attach to the
+  (MatrixClaw, Codex or Claude Code), blocking or in the background. Agent
+  types (`explore`, `plan`, `review`, `verify`, your own), and worktree
+  children that work on their own branch and are merged back or dropped.
+- **Coding agent.** Language servers and diagnostics after edits
+([Language servers](docs/LSP.md)), `repo_map` ([Repository map](docs/REPO_MAP.md)),
+file checkpoints with `/undo` and `/rewind` ([Checkpoints](docs/CHECKPOINTS.md)),
+goals ([Goals](docs/GOALS.md)), Claude Code-compatible hooks
+([Hooks](docs/HOOKS.md)), the `full_auto` shell sandbox
+([Shell sandbox](docs/SANDBOX.md); `daemon.sandbox.mode: "off"` opts out) and
+skills with session learning ([Skills](docs/SKILLS.md)).
+
+**External agents.** Codex app-server and Claude Code sessions attach to the
   same session model.
 - **Todo list, memory and search.** `todo_write` tracks multi-step work;
   `memory` keeps approved durable notes; `session_search` searches past
-  conversations.
+  conversations. After a long session the agent files skill drafts and memory
+  suggestions, which stay quarantined until you approve them
+  ([Skills](docs/SKILLS.md)).
 - **Web and browser.** `web_search` (DuckDuckGo, Tavily, Serper, SearXNG) and
   `web_fetch`; interactive browser tools through an MCP browser server.
 - **Voice.** Local TTS (Piper, Supertonic 3) and STT (Whisper.cpp), realtime
@@ -79,7 +113,8 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/in
 The installer downloads the matching GitHub Release archive, installs
 `matrixclaw`, `matrixclawd` and `matrixclaw-telephony-gateway` into
 `~/.local/bin`, creates the config and state directories, and starts
-`matrixclaw setup`.
+`matrixclaw setup`. A minimal system needs `curl` and `ca-certificates`
+(for example `apt-get install -y curl ca-certificates`).
 
 Installer options (pass after `bash -s --`):
 
@@ -112,6 +147,12 @@ curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/un
 curl -fsSL https://raw.githubusercontent.com/Suren878/matrixclaw/main/scripts/uninstall.sh | bash -s -- --purge
 ```
 
+**Upgrading from v0.2.0.** The first start converts the database and
+setup.json once, so back up first, replace
+both binaries, and run `matrixclaw service restart`. See the upgrade notes in
+[CHANGELOG.md](CHANGELOG.md) and the backup and rollback steps in
+[Storage](docs/STORAGE.md#database).
+
 ### From source
 
 Requires Go 1.26+.
@@ -129,7 +170,10 @@ sending changes.
 ## Quick start
 
 1. Run `matrixclaw`. On a fresh machine it opens setup: pick a provider, enter
-   its API key (or sign in, see below), and optionally enable Telegram.
+   its API key (or sign in, see below), and optionally enable Telegram. The
+   wizard stores the key in setup.json; to keep it out of the file, set
+   `api_key_env` for the provider to the name of an environment variable
+   instead (see [`setup.example.json`](setup.example.json)).
 2. Run `matrixclaw` again (or `matrixclaw tui [WORKDIR]`). It starts the daemon
    when needed and opens the terminal chat for the current directory.
 3. Ask for something. Approve or deny tool calls as they come up.
@@ -180,15 +224,18 @@ visible in the other. These are client commands, not model tools.
 ```text
 /new                  create a session
 /sessions             list, select, rename or delete sessions
-/provider [id]        provider and model for the current session
+/provider [id]        providers: pick a provider, then its model, for the session
 /permissions          permission mode and allow/ask/deny rules
 /plan                 plan mode: explore read-only, then approve the agent's plan
+/goal [objective]     long-running goal; --check, pause, resume, clear
+/undo, /rewind        revert the last run's file changes, or go back to a checkpoint
+/hooks                list hooks and trust a project's hook file
 /context              inspect, compact or clear the session context
 /usage                runs, steps and token usage
 /continue             continue the latest run with a fresh budget
 /budget               show or override the session's run budget
 /todo [clear]         show or clear the todo list
-/memory               durable assistant memory
+/memory               durable assistant memory and suggestions awaiting approval
 /search <query>       search stored message history
 /skills               skills enabled for this session
 /modules              storage, TTS, STT, realtime voice, web search, MCP, external agents, ...
@@ -300,6 +347,13 @@ tool contract and API roles.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | daemon, core, runs, modules, API, package map |
 | [docs/TELEGRAM.md](docs/TELEGRAM.md) | Telegram client, approvals, inline and guest mode, files, voice |
 | [docs/SUBAGENTS.md](docs/SUBAGENTS.md) | agent types, agent files, output schema, worktree children |
+| [docs/SANDBOX.md](docs/SANDBOX.md) | shell sandbox for `full_auto` |
+| [docs/GOALS.md](docs/GOALS.md) | `/goal`, check command, budgets |
+| [docs/HOOKS.md](docs/HOOKS.md) | Claude Code-compatible hooks, diagnostics after edits |
+| [docs/LSP.md](docs/LSP.md) | language servers and the `lsp` tool |
+| [docs/CHECKPOINTS.md](docs/CHECKPOINTS.md) | file checkpoints, `/undo`, `/rewind` |
+| [docs/REPO_MAP.md](docs/REPO_MAP.md) | `repo_map` tool |
+| [docs/SKILLS.md](docs/SKILLS.md) | skills library, session learning |
 | [docs/EXTERNAL_AGENTS.md](docs/EXTERNAL_AGENTS.md) | Codex and Claude Code runtimes, subagents |
 | [docs/MCP.md](docs/MCP.md) | MCP client and server |
 | [docs/BROWSER.md](docs/BROWSER.md) | browser tools through MCP |
