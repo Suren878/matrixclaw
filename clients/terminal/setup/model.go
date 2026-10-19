@@ -99,6 +99,9 @@ type model struct {
 	aborted         bool
 	hasExisting     bool
 
+	// makeDefault: saving the provider form makes it the active provider.
+	makeDefault bool
+
 	providerTypeCursor       int
 	providerNoProviderCursor int
 	providerBaseURLCursor    int
