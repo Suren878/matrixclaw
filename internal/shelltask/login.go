@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"os/exec"
-	"syscall"
 	"time"
 )
 
@@ -23,7 +22,7 @@ func LoginEnvironment(environ []string, timeout time.Duration) ([]string, error)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", "-lc", `printf '\0shelltask-environment\0'; env -0`)
 	cmd.Env = environ
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = groupAttr()
 	cmd.Cancel = func() error { return KillGroup(cmd.Process.Pid) }
 	cmd.WaitDelay = time.Second
 	out, err := cmd.Output()

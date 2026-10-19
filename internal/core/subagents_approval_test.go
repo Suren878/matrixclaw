@@ -302,8 +302,10 @@ func TestMessagesToAParentWaitingForItsChildSteerOrQueueAsUsual(t *testing.T) {
 			switch mode {
 			case core.BusyInputModeSteer:
 				assertRecoveryRunStatus(t, b.db, parent.ID, core.RunStatusCompleted)
-				if got := toolResultContent(b.lastParentRequest(), "call-delegate"); !strings.Contains(got, "User guidance: also check the logs") {
-					t.Fatalf("delegate result the parent read = %q", got)
+				request := b.lastParentRequest()
+				last := request.Messages[len(request.Messages)-1]
+				if got := toolResultContent(request, "call-delegate"); got != "Child read: mutated" || last.Role != "user" || last.Content != "also check the logs" {
+					t.Fatalf("delegate result the parent read = %q, then %+v", got, last)
 				}
 			case core.BusyInputModeQueue:
 				runs, err := b.db.ListSessionRuns(context.Background(), parent.SessionID, 0)

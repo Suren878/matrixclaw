@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"os/exec"
-	"syscall"
 	"time"
 )
 
@@ -26,7 +25,7 @@ func Run(ctx context.Context, command, dir string, env []string, stdin []byte, l
 	cmd.Dir, cmd.Env = dir, env
 	cmd.Stdin = bytes.NewReader(stdin)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = groupAttr()
 	cmd.Cancel = func() error { return KillGroup(cmd.Process.Pid) }
 	cmd.WaitDelay = time.Second
 	err := cmd.Run()

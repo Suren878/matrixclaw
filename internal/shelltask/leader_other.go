@@ -2,7 +2,10 @@
 
 package shelltask
 
-import "errors"
+import (
+	"errors"
+	"syscall"
+)
 
 // Processes cannot be told apart here, so leftovers are never killed.
 
@@ -12,4 +15,9 @@ func processStart(int) (string, error) {
 
 func bootID() (string, error) {
 	return "", errors.New("shelltask: boot IDs are not supported on this system")
+}
+
+// groupAttr starts a command in a process group of its own.
+func groupAttr() *syscall.SysProcAttr {
+	return &syscall.SysProcAttr{Setpgid: true}
 }

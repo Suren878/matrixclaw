@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // processStart is when process pid started, in clock ticks since boot, as
@@ -28,4 +29,11 @@ func processStart(pid int) (string, error) {
 func bootID() (string, error) {
 	data, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	return strings.TrimSpace(string(data)), err
+}
+
+// groupAttr starts a command in a process group of its own that the kernel
+// kills when the daemon dies, so a killed daemon leaves no command running
+// unseen.
+func groupAttr() *syscall.SysProcAttr {
+	return &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
 }

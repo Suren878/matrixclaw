@@ -100,7 +100,7 @@ func helperArgs(p Policy, argv []string) []string {
 var devFiles = []string{"/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom", "/dev/tty", "/dev/ptmx"}
 
 func bwrapArgs(p Policy, argv []string) []string {
-	args := []string{Bubblewrap, "--ro-bind", "/", "/", "--dev", "/dev"}
+	args := []string{Bubblewrap, "--die-with-parent", "--ro-bind", "/", "/", "--dev", "/dev"}
 	for _, dir := range parentsFirst(p.Writable()) {
 		args = append(args, "--bind", dir, dir)
 	}

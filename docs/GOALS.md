@@ -21,7 +21,10 @@ evidence, the goal's check command passes and no todo item is open.
 - The objective is at most 2000 bytes; put long specifications in a file and
   name it. `--max-runs` defaults to 10 and is at most 50. `--tokens` caps the
   tokens of all goal runs together (and the token budget of each goal run at
-  what is left).
+  what is left). Like any token budget it is checked between steps: the step
+  that crosses it still finishes, and one closing turn without tools reports
+  what is done. Each step resends the whole prompt (often 10–30k tokens with
+  tools and project context), so a cap below that stops after the first step.
 - Option values may be quoted; the objective is the text before the first
   option.
 - One goal per session, only in native top-level sessions (not external

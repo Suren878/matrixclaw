@@ -26,7 +26,7 @@ const reviewSystemPrompt = `You review a finished working session between a user
 1. Corrections: the user corrected the assistant's style, tone, workflow or tool use, or stated a preference.
 2. Techniques: a non-trivial approach that worked after some effort, such as a debugging path, a command sequence or a project convention found along the way.
 3. Skills: a loaded skill whose instructions proved wrong, outdated or missing a step.
-Most sessions teach nothing durable; then return empty lists. Never invent lessons, and never record task progress, one-off details, secrets or credentials.
+Most sessions teach nothing durable; then return empty lists. Never invent lessons, and never record task progress, one-off details, secrets or credentials, or the state of this run's environment (network trouble, sandbox or permission refusals, a missing tool or service): it changes with the setup.
 
 Reply with one JSON object and nothing else:
 {"skills":[{"name":"...","description":"Use when ...","body":"...","updates":""}],"memories":[{"scope":"user","content":"..."}]}

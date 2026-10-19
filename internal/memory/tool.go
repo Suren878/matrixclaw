@@ -26,7 +26,7 @@ type tool struct {
 func (t *tool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:              toolName,
-		Description:     "Persistent notes shown to you at the start of every later run. Save durable facts that will matter again: the user's preferences, project conventions, build and test commands, decisions and their reasons. Do not save task progress, secrets, or what the repository's own docs already say. action is list (the default; never asks), add, replace or remove; replace and remove need the id from list. Changes wait for the user's approval.",
+		Description:     "Persistent notes shown to you at the start of every later run. Save durable facts that will matter again: the user's preferences, project conventions, build and test commands, decisions and their reasons. Do not save task progress, secrets, or what the repository's own docs already say. action is list (the default; never asks), add, replace or remove; replace and remove need the id from list. Changes ask for the user's approval unless the session's permission mode lets them run.",
 		Effect:          tools.EffectMutation,
 		Asks:            true,
 		Namespace:       "core.memory",

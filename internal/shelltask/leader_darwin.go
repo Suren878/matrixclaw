@@ -2,6 +2,7 @@ package shelltask
 
 import (
 	"fmt"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -26,4 +27,9 @@ func bootID() (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%d.%06d", booted.Sec, booted.Usec), nil
+}
+
+// groupAttr starts a command in a process group of its own.
+func groupAttr() *syscall.SysProcAttr {
+	return &syscall.SysProcAttr{Setpgid: true}
 }

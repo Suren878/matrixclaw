@@ -45,7 +45,7 @@ func Start(command, dir string, env []string, box sandbox.Policy, out *Output) (
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = dir
 	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = groupAttr()
 	cmd.Stdout, cmd.Stderr = writer, writer
 	p := &Process{cmd: cmd, out: out, reader: reader, exited: make(chan struct{}), done: make(chan struct{}), exitCode: -1, startedAt: time.Now()}
 	err = cmd.Start()
