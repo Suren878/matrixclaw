@@ -152,7 +152,11 @@ func changesSummary(cp core.FileCheckpointView) string {
 		added += change.Added
 		deleted += change.Deleted
 	}
-	return fmt.Sprintf("%d files, +%d -%d", len(cp.Changes), added, deleted)
+	files := "files"
+	if len(cp.Changes) == 1 {
+		files = "file"
+	}
+	return fmt.Sprintf("%d %s, +%d -%d", len(cp.Changes), files, added, deleted)
 }
 
 // statPreview lists what restoring cp changes, at most maxStatLines files.

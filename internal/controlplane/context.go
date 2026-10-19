@@ -44,6 +44,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, r Route) (Result, error)
 		return Result{Screen: contextInfoData(report)}, nil
 	case contextClear:
 		return Result{Screen: ConfirmData{
+			Title:          "Context",
 			Message:        "Clear context now?",
 			ConfirmLabel:   "Clear",
 			CancelLabel:    "Close",
@@ -58,6 +59,7 @@ func (d *Dispatcher) handleContext(ctx context.Context, r Route) (Result, error)
 		return Result{Screen: TextData{Text: "Context cleared."}, ReloadSnapshot: true}, nil
 	case contextCompact:
 		return Result{Screen: ConfirmData{
+			Title:          "Context",
 			Message:        "Compact context now?",
 			ConfirmLabel:   "Compact",
 			CancelLabel:    "Close",

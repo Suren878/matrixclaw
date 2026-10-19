@@ -10,7 +10,7 @@ import (
 func (d *Dispatcher) handleTaskAdd(ctx context.Context, args string) (Result, error) {
 	fields := strings.Fields(args)
 	if len(fields) == 0 {
-		return textResult("Usage: /tasks add once 2026-04-26 16:00 -- prompt"), nil
+		return textResult("Usage: /tasks add once YYYY-MM-DD HH:MM -- prompt"), nil
 	}
 	binding, err := d.currentBinding(ctx)
 	if err != nil {

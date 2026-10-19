@@ -21,7 +21,7 @@ var (
 	tasksBackgroundStopNow   = verb(CommandTasks, "bg-stop-confirm", 1)
 )
 
-const tasksUsage = "Usage:\n/tasks\n/tasks bg <id>\n/tasks add once 2026-04-26 16:00 -- prompt\n/tasks add cron \"0 10 1 * *\" -- prompt\n/tasks complete <id>\n/tasks delete <id>\n/tasks run <id>"
+const tasksUsage = "Usage:\n/tasks\n/tasks bg <id>\n/tasks add once YYYY-MM-DD HH:MM -- prompt\n/tasks add cron \"0 10 1 * *\" -- prompt\n/tasks complete <id>\n/tasks delete <id>\n/tasks run <id>"
 
 func (d *Dispatcher) handleTasks(ctx context.Context, r Route) (Result, error) {
 	jobID := r.arg(0)

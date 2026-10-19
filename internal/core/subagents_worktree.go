@@ -329,6 +329,8 @@ func (c *Core) removeWorktreeAndBranch(ctx context.Context, sessionID string, ro
 		if err := os.RemoveAll(root); err != nil {
 			return err
 		}
+		// The repository's directory of worktrees goes with its last one.
+		_ = os.Remove(filepath.Dir(root))
 	}
 	if repo == "" {
 		return nil
