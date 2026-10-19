@@ -86,6 +86,32 @@ done.
   API) instead of being saved as global. Memory that cannot be read is
   logged, and a run is no longer told every entry was removed.
 
+### Install and service
+
+- `install.sh` piped without a controlling terminal no longer fails when it
+  starts setup: it says to run `matrixclaw setup` later. `uninstall.sh
+  --purge` without a terminal refuses unless `--yes` is given, by the same
+  check.
+- Without a systemd user session (containers, macOS) `matrixclaw service stop`
+  stops the daemon through its API and waits until it is down, `service
+  restart` replaces the running daemon instead of starting a second one the
+  data lock refused, and a daemon that fails to start is an error with the
+  end of its log. `uninstall.sh` stops such a daemon before removing the
+  binaries and reports one it could not stop.
+- A directly launched daemon runs detached and logs to
+  `~/.local/state/matrixclaw/matrixclawd.log`; `service logs` reads it when
+  the journal has nothing.
+- On macOS `install.sh` and `uninstall.sh --purge` use the directory the
+  daemon keeps setup.json in (`~/Library/Application Support/matrixclaw`),
+  so `--purge` removes the API keys there too. Setup written by v0.2.0 stays
+  where it is.
+- A leading `~` in `daemon.db_path` (or `MATRIXCLAW_DB_PATH`) is the home
+  directory, not a directory named `~`.
+- `matrixclaw doctor` before the first start notes the missing api_token and
+  database as created on first start instead of reporting errors.
+- `matrixclaw setup --help` and `tui --help` print usage; an unknown `update`
+  subcommand is an error.
+
 ### Security
 
 - Every API route has one policy (`open`, `owner`, `session`); members and
