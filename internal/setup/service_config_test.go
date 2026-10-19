@@ -84,8 +84,14 @@ func TestProviderEditsKeepTheRestOfTheConfigAndStayOffline(t *testing.T) {
 	if _, ok := got.Provider("local-ai"); ok {
 		t.Fatal("custom provider was not deleted")
 	}
-	if got.ActiveProviderID != "anthropic" {
-		t.Fatalf("active = %q, want the newly added provider", got.ActiveProviderID)
+	if got.ActiveProviderID != "openai" {
+		t.Fatalf("active = %q, want the one active before", got.ActiveProviderID)
+	}
+	if _, err := service.ConfigureProvider("anthropic", ProviderSetupUpdate{Active: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := store.Load(); got.ActiveProviderID != "anthropic" {
+		t.Fatalf("active = %q, want the provider made active", got.ActiveProviderID)
 	}
 	if got.Daemon.Budgets.User.Steps != 500 || got.Daemon.ContextWindowCap != 100000 || got.Daemon.ModelConcurrency != 2 || got.Daemon.APIToken != "token" {
 		t.Fatalf("daemon settings lost: %+v", got.Daemon)

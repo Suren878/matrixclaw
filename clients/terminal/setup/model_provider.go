@@ -22,6 +22,8 @@ func (m *model) handleProviderFormSave() error {
 		return err
 	}
 	m.cfg.SetProvider(*p)
-	m.cfg.ActiveProviderID = p.ID
+	if _, ok := m.cfg.ActiveProvider(); !ok || m.makeDefault {
+		m.cfg.ActiveProviderID = p.ID
+	}
 	return m.commitFormAndReturn(screenProviderList)
 }

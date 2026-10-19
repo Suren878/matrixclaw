@@ -180,7 +180,7 @@ visible in the other. These are client commands, not model tools.
 ```text
 /new                  create a session
 /sessions             list, select, rename or delete sessions
-/provider             provider and model for the current session
+/provider [id]        provider and model for the current session
 /permissions          permission mode and allow/ask/deny rules
 /plan                 plan mode: explore read-only, then approve the agent's plan
 /context              inspect, compact or clear the session context

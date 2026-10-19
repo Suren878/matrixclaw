@@ -55,8 +55,14 @@ The selected session is stored in the daemon as the chat's binding. If none is
 selected when you write, the bot shows the session list (or creates a session
 when there are none) and asks you to send the message again.
 
-Selecting a provider in `/provider` switches the current session at once; when
-the provider has more than one model, the model picker opens next.
+`/provider` lists the providers; selecting a configured one (the current one
+too) opens its models, and choosing a model switches the current session to
+that provider and model. When the provider cannot list its models, the picker
+offers its setup model and **Enter model id**. `/provider <id>` opens that
+provider's models directly. For the owner the list also offers providers still
+to configure, **Default for new sessions** (provider, then model) and a custom
+provider; a provider's **Settings** (key, endpoint, options) are in its model
+picker or under `/provider edit <id>`, and saving them changes no session.
 
 ## Runs
 

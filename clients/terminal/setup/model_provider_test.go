@@ -31,6 +31,18 @@ func TestProviderSaveNeedsAKeyAndStoresOnlyUserValues(t *testing.T) {
 	if saved.Effective().Model == "" {
 		t.Fatal("no default model")
 	}
+
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	m.openProviderForm(setup.ProviderConfig{ID: "anthropic", APIKey: "sk-ant"})
+	if err := m.handleProviderFormSave(); err != nil || m.cfg.ActiveProviderID != "openai" {
+		t.Fatalf("saving a second provider: active %q, %v", m.cfg.ActiveProviderID, err)
+	}
+	m.openProviderForm(setup.ProviderConfig{ID: "anthropic", APIKey: "sk-ant"})
+	m.formFocus = len(m.providerFormItems()) - 1
+	_, _ = m.updateProviderForm(keyPress(tea.KeyEnter, 0))
+	if err := m.handleProviderFormSave(); err != nil || m.cfg.ActiveProviderID != "anthropic" {
+		t.Fatalf("default for new sessions: active %q, %v", m.cfg.ActiveProviderID, err)
+	}
 }
 
 func TestBoolPickerEditsTheTypedConfig(t *testing.T) {

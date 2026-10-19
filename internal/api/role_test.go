@@ -166,7 +166,7 @@ func TestMCPEnvIsMaskedForAllButTheOwner(t *testing.T) {
 	}
 }
 
-func TestMemberModelSwitchLeavesSetupAlone(t *testing.T) {
+func TestSessionModelSwitchLeavesSetupAlone(t *testing.T) {
 	st, err := store.NewSQLite(filepath.Join(t.TempDir(), "matrixclaw.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -176,25 +176,39 @@ func TestMemberModelSwitchLeavesSetupAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := setup.ProviderConfig{ID: "fake", Name: "Fake", Type: "openai-compatible", APIKey: "sk-test", BaseURL: "http://127.0.0.1:1", Model: "m1"}
+	other := setup.ProviderConfig{ID: "other", Name: "Other", Type: "openai-compatible", APIKey: "sk-test", BaseURL: "http://127.0.0.1:1", Model: "o1"}
 	setupStore := setup.NewFileStore(filepath.Join(t.TempDir(), "setup.json"))
-	if err := setupStore.Save(setup.Config{Version: setup.CurrentVersion, ActiveProviderID: "fake", Providers: []setup.ProviderConfig{provider}}); err != nil {
+	if err := setupStore.Save(setup.Config{Version: setup.CurrentVersion, ActiveProviderID: "fake", Providers: []setup.ProviderConfig{provider, other}}); err != nil {
 		t.Fatal(err)
 	}
-	llms := sessionllm.New("fake", []sessionllm.ProviderSpec{{ID: "fake", Name: "Fake", Type: provider.Type, APIKey: provider.APIKey, BaseURL: provider.BaseURL, Model: provider.Model}})
+	spec := func(p setup.ProviderConfig) sessionllm.ProviderSpec {
+		return sessionllm.ProviderSpec{ID: p.ID, Name: p.Name, Type: p.Type, APIKey: p.APIKey, BaseURL: p.BaseURL, Model: p.Model}
+	}
 	app := core.New(core.Config{Store: st})
-	app.SetSessionLLMs(llms)
+	app.SetSessionLLMs(sessionllm.New("fake", []sessionllm.ProviderSpec{spec(provider), spec(other)}))
 	server := New(Deps{Core: app, Setup: setup.NewService(setupStore), Reload: func(context.Context) error { return nil }})
 
-	if got := serveAs(server, core.RoleMember, "PATCH", "/v1/sessions/s1/llm", `{"model_id":"m2"}`); got.Code != http.StatusOK {
-		t.Fatalf("member model switch: status %d %s", got.Code, got.Body.String())
+	for _, tc := range []struct {
+		role                  core.Role
+		body, provider, model string
+	}{
+		{core.RoleMember, `{"model_id":"m2"}`, "fake", "m2"},
+		{core.RoleOwner, `{"provider_id":"other","model_id":"o3"}`, "other", "o3"},
+		{core.RoleOwner, `{"model_id":"o4"}`, "other", "o4"},
+	} {
+		got := serveAs(server, tc.role, "PATCH", "/v1/sessions/s1/llm", tc.body)
+		var response core.SessionResponse
+		if got.Code != http.StatusOK || json.Unmarshal(got.Body.Bytes(), &response) != nil {
+			t.Fatalf("%s %s: status %d %s", tc.role, tc.body, got.Code, got.Body.String())
+		}
+		if response.Session.ProviderID != tc.provider || response.Session.ModelID != tc.model {
+			t.Fatalf("%s %s: session %s · %s", tc.role, tc.body, response.Session.ProviderID, response.Session.ModelID)
+		}
 	}
-	if saved, _ := setupStore.Load(); saved.Providers[0].Model != "m1" {
-		t.Fatalf("member's switch saved model %q to setup", saved.Providers[0].Model)
+	if got := serveAs(server, core.RoleOwner, "PATCH", "/v1/sessions/s1/llm", `{"provider_id":"fake"}`); got.Code != http.StatusBadRequest {
+		t.Fatalf("provider without a model: status %d, want 400", got.Code)
 	}
-	if got := serveAs(server, core.RoleOwner, "PATCH", "/v1/sessions/s1/llm", `{"model_id":"m3"}`); got.Code != http.StatusOK {
-		t.Fatalf("owner model switch: status %d %s", got.Code, got.Body.String())
-	}
-	if saved, _ := setupStore.Load(); saved.Providers[0].Model != "m3" {
-		t.Fatalf("owner's switch saved model %q, want m3", saved.Providers[0].Model)
+	if saved, _ := setupStore.Load(); saved.ActiveProviderID != "fake" || saved.Providers[0].Model != "m1" || saved.Providers[1].Model != "o1" {
+		t.Fatalf("a session switch changed setup: %+v", saved)
 	}
 }

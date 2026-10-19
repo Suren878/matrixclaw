@@ -44,7 +44,6 @@ type FormField struct {
 	Label       string
 	Value       string
 	EditCommand string
-	Disabled    bool
 }
 
 type ConfirmData struct {

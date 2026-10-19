@@ -593,8 +593,10 @@ through read-only subagents.
   `setup.json.pre-v4`, so a new client never breaks an older running daemon.
 - Every edit is `Service.Update(func(*Config) error)`: load, change,
   canonicalize, `Config.Validate` (structure only: no network, no env), save
-  atomically under one lock. Provider edits, the session model switch and
-  module settings change only their own part.
+  atomically under one lock. Provider edits and module settings change only
+  their own part. A session's provider and model live in the session, never
+  in setup.json; `active_provider_id` and that provider's `model` are the
+  default for new sessions.
 - The file stores the user's choices, not built-in defaults.
   `ProviderConfig.Effective` fills catalog defaults; `Runtime` adds the API key
   from the file or the environment. `CheckProvider` (a usable key) runs when a

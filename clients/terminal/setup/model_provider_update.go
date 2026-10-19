@@ -34,13 +34,8 @@ func (m *model) updateProviderList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			selected := entries[m.cursor]
 			m.formError = ""
 			switch selected.Kind {
-			case providerEntryConfigured:
-				m.editingProvider = selected.Provider
-				m.openForm(screenProviderForm)
-				return m, nil
-			case providerEntryAvailable:
-				m.editingProvider = selected.Provider
-				m.openForm(screenProviderForm)
+			case providerEntryConfigured, providerEntryAvailable:
+				m.openProviderForm(selected.Provider)
 				return m, nil
 			case providerEntryContinue:
 				if len(m.cfg.Providers) == 0 {
@@ -99,11 +94,16 @@ func (m *model) updateProviderTypeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.formError = err.Error()
 			return m, nil
 		}
-		m.editingProvider = provider
-		m.openForm(screenProviderForm)
+		m.openProviderForm(provider)
 		return m, nil
 	}
 	return m, nil
+}
+
+func (m *model) openProviderForm(provider setup.ProviderConfig) {
+	m.editingProvider = provider
+	m.makeDefault = false
+	m.openForm(screenProviderForm)
 }
 
 func (m *model) updateProviderForm(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -139,6 +139,8 @@ func (m *model) updateProviderForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 			efforts := view.capabilities.ReasoningEfforts
 			m.providerEffortCursor = max(0, slices.Index(efforts, view.effective.ReasoningEffort))
 			m.screen = screenProviderEffortList
+		case providerFieldDefault:
+			m.makeDefault = !m.makeDefault && !m.providerIsActive()
 		case providerFieldToolUse:
 			m.providerToolUseCursor = max(0, slices.Index(toolUseModes, providers.NormalizeToolUseMode(view.effective.ToolUseMode)))
 			m.screen = screenProviderToolUseList

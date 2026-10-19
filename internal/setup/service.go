@@ -156,7 +156,7 @@ func (s *Service) ProviderItems() ([]ProviderSetupItem, error) {
 }
 
 // ConfigureProvider applies update to the provider, adding it when it is not
-// configured yet; a new provider, or update.Active, makes it the active one.
+// configured yet; update.Active, or no active provider yet, makes it active.
 func (s *Service) ConfigureProvider(providerID string, update ProviderSetupUpdate) (ProviderSetupItem, error) {
 	var savedID string
 	cfg, err := s.Update(func(cfg *Config) error {
@@ -175,7 +175,7 @@ func (s *Service) ConfigureProvider(providerID string, update ProviderSetupUpdat
 			return err
 		}
 		cfg.SetProvider(provider)
-		if cfg.ActiveProviderID == "" || update.Active || !exists {
+		if _, active := cfg.ActiveProvider(); !active || update.Active {
 			cfg.ActiveProviderID = provider.ID
 		}
 		savedID = provider.ID

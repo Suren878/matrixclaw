@@ -21,6 +21,7 @@ const (
 	providerFieldModel
 	providerFieldReasoning
 	providerFieldToolUse
+	providerFieldDefault
 )
 
 var toolUseModes = []providers.ToolUseMode{providers.ToolUseNative, providers.ToolUseDisabled}
@@ -100,7 +101,17 @@ func (m *model) providerFormItems() []providerFormItem {
 	if view.capabilities.ProviderCapabilities.ToolCalling {
 		items = append(items, providerFormItem{Row: listItem{Title: "Tool use", Status: view.effective.ToolUseMode.Label()}, Field: providerFieldToolUse})
 	}
-	return items
+	isDefault := "No"
+	if m.makeDefault || m.providerIsActive() {
+		isDefault = "Yes"
+	}
+	return append(items, providerFormItem{Row: listItem{Title: "Default for new sessions", Status: isDefault}, Field: providerFieldDefault})
+}
+
+// providerIsActive: the provider being edited is the saved active one.
+func (m *model) providerIsActive() bool {
+	active, ok := m.cfg.ActiveProvider()
+	return ok && strings.EqualFold(active.ID, m.editingProvider.ID)
 }
 
 func providerFormRows(items []providerFormItem) []listItem {

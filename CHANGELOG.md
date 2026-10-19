@@ -101,6 +101,18 @@ done.
   bubblewrap, Landlock or sandbox-exec, whichever works, and `/status` shows
   which one or that none is available.
 
+### Telegram and terminal
+
+- `/provider` (and a session's **Model** row) picks provider and model in one
+  go: every configured provider, the current one too, opens its model picker,
+  which falls back to the setup model and typing a model id when the provider
+  lists no models. A session's choice no longer rewrites the provider's model
+  in setup.json. The provider form keeps key, endpoint and options (a model
+  only for custom providers) and saving it no longer switches the session; the
+  owner picks **Default for new sessions** (provider, then model) explicitly,
+  and the setup wizard has the same row in its provider form. A session
+  without a model uses its own provider's default, not the active one's.
+
 ### Upgrade notes (breaking)
 
 - Back up first. The first start converts the database once to a canonical
@@ -117,7 +129,15 @@ done.
   saved in setup.json by an older wizard still applies and may contradict the
   coding manual. Clear it unless you wrote it.
 - Some typed controlplane commands changed (`/modules mcp delete <id>`,
-  `/tasks bg-output <id>`); `/provider key` is gone. Telegram buttons sent
+  `/tasks bg-output <id>`); `/provider key` is gone. `/provider <id>` opens
+  the provider's models instead of its settings (`/provider edit <id>`);
+  `/provider use` now takes `<session> <provider> <model>`.
+- API: `PATCH /v1/sessions/{id}/llm` requires `model_id` (with an optional
+  `provider_id`, else the session's) and no longer saves the owner's choice to
+  setup.json; `GET /v1/sessions/{id}/models` takes `?provider=` and reports a
+  failed discovery in `models_error`. Saving a provider through
+  `PATCH /v1/setup/providers/{id}` makes it active only with `"active": true`
+  or when no provider is active. Telegram buttons sent
   before the upgrade answer "Unknown command".
 - API: sessions lost `runtime_id` (use `kind`); new routes for checkpoints,
   hooks, goals and memory approval.
