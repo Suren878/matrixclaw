@@ -181,7 +181,9 @@ func TestMemberModelSwitchLeavesSetupAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	llms := sessionllm.New("fake", []sessionllm.ProviderSpec{{ID: "fake", Name: "Fake", Type: provider.Type, APIKey: provider.APIKey, BaseURL: provider.BaseURL, Model: provider.Model}})
-	server := New(Deps{Core: core.New(st).WithSessionLLMs(llms), Setup: setup.NewService(setupStore), Reload: func(context.Context) error { return nil }})
+	app := core.New(core.Config{Store: st})
+	app.SetSessionLLMs(llms)
+	server := New(Deps{Core: app, Setup: setup.NewService(setupStore), Reload: func(context.Context) error { return nil }})
 
 	if got := serveAs(server, core.RoleMember, "PATCH", "/v1/sessions/s1/llm", `{"model_id":"m2"}`); got.Code != http.StatusOK {
 		t.Fatalf("member model switch: status %d %s", got.Code, got.Body.String())

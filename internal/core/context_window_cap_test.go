@@ -27,7 +27,7 @@ func TestContextWindowCapBoundsRunsAndTheContextReport(t *testing.T) {
 			defer cleanup()
 			summaries := 0
 			app.SetTuning(core.Tuning{WindowCap: tc.cap})
-			app.WithSessionLLMs(windowLLMs{window: 1_000_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+			app.SetSessionLLMs(windowLLMs{window: 1_000_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 				if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
 					summaries++
 					return providers.Response{Text: "SUMMARY"}, nil
@@ -71,7 +71,7 @@ func TestContextReportRecommendsCompactingWhereRunsWouldSummarise(t *testing.T) 
 	defer cleanup()
 	// A 64k output limit leaves 50k of a 100k window, so ~45k tokens of
 	// history are past the 80% mark.
-	app.WithSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: outputLimitedRuntime{output: 65_536, generationRuntimeFunc: func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: outputLimitedRuntime{output: 65_536, generationRuntimeFunc: func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{Text: "Done."}, nil
 	}}}})
 	big := strings.Repeat("x", 180_000)

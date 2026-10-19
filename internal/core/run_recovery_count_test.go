@@ -18,7 +18,7 @@ func TestARunRestartedTooOftenWithoutProgressFails(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "never asked"}
-	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
 	_, run := saveCrashRecoveryRun(t, db, "restart-loop", core.RunStatusRunning, false)
 	if err := db.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{RunID: run.ID, RecoveryCount: 8, UpdatedAt: run.UpdatedAt}); err != nil {
 		t.Fatal(err)
@@ -38,13 +38,13 @@ func TestAFinishedStepResetsTheRecoveryCount(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(changingTool("inspect_state")))
+	app.SetTools(tools.NewRegistry(changingTool("inspect_state")))
 	_, run := saveCrashRecoveryRun(t, db, "restart-progress", core.RunStatusRunning, false)
 	if err := db.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{RunID: run.ID, RecoveryCount: 7, UpdatedAt: run.UpdatedAt}); err != nil {
 		t.Fatal(err)
 	}
 	var counts []int
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
 		checkpoint, err := db.GetRunCheckpoint(ctx, run.ID)
 		if err != nil && !errors.Is(err, core.ErrNotFound) {
 			return providers.Response{}, err
@@ -82,12 +82,11 @@ func TestASubagentWhoseTaskCannotBeRecordedLeavesNoSessionBehind(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	app := core.New(failingTaskStore{SQLiteStore: db})
-	app.WithRunStarter(&recordingRunStarter{})
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app := core.New(core.Config{Store: failingTaskStore{SQLiteStore: db}, RunStarter: &recordingRunStarter{}})
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	var spawnResult string
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if calls++; calls > 1 {
 			spawnResult = request.Messages[len(request.Messages)-1].Content
 			return providers.Response{Text: "Could not delegate."}, nil

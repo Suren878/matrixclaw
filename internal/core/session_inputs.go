@@ -6,9 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
-	"sync"
 
-	"github.com/Suren878/matrixclaw/internal/textutil"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -34,42 +33,6 @@ func acceptRunStatusForInputMode(mode BusyInputMode) AcceptRunStatus {
 	default:
 		return AcceptRunStatusQueued
 	}
-}
-
-// sessionGate serialises the run bookkeeping of one session. The gate is
-// dropped once its last holder unlocks it.
-type sessionGate struct {
-	c    *Core
-	id   string
-	mu   sync.Mutex
-	refs int
-}
-
-func (g *sessionGate) Lock() { g.mu.Lock() }
-
-func (g *sessionGate) Unlock() {
-	g.mu.Unlock()
-	g.c.mu.Lock()
-	defer g.c.mu.Unlock()
-	if g.refs--; g.refs == 0 {
-		delete(g.c.sessionGates, g.id)
-	}
-}
-
-// sessionGate returns the session's gate; the caller must Lock and Unlock it once.
-func (c *Core) sessionGate(sessionID string) *sessionGate {
-	if sessionID == "" {
-		sessionID = "_"
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	gate := c.sessionGates[sessionID]
-	if gate == nil {
-		gate = &sessionGate{c: c, id: sessionID}
-		c.sessionGates[sessionID] = gate
-	}
-	gate.refs++
-	return gate
 }
 
 // newRun is a run to accept with its user message; empty IDs are generated.
@@ -143,8 +106,8 @@ func (c *Core) createAcceptedRun(ctx context.Context, session Session, in newRun
 		return AcceptRunResult{}, err
 	}
 	c.applyAutoSessionTitle(ctx, session, autoTitle)
-	c.publishEvent(Event{Type: EventMessageCreated, SessionID: session.ID, RunID: run.ID, Payload: message})
-	c.publishEvent(Event{Type: EventRunUpdated, SessionID: session.ID, RunID: run.ID, Payload: run})
+	c.publishEvent(events.Event{Type: EventMessageCreated, SessionID: session.ID, RunID: run.ID, Payload: message})
+	c.publishEvent(events.Event{Type: EventRunUpdated, SessionID: session.ID, RunID: run.ID, Payload: run})
 	return AcceptRunResult{
 		SessionID:   session.ID,
 		Status:      AcceptRunStatusStarted,
@@ -193,7 +156,7 @@ func sessionAcceptsNativeSteer(session Session) bool {
 }
 
 func (c *Core) publishSessionInputUpdated(input SessionInput) {
-	c.publishEvent(Event{
+	c.publishEvent(events.Event{
 		Type:      EventInputUpdated,
 		SessionID: input.SessionID,
 		RunID:     input.TargetRunID,
@@ -205,53 +168,43 @@ func (c *Core) startNextPendingSessionInput(ctx context.Context, sessionID strin
 	if sessionID == "" || c == nil || c.store == nil {
 		return false, nil
 	}
-
-	var startRunID string
-	var result AcceptRunResult
-	gate := c.sessionGate(sessionID)
-	gate.Lock()
-
-	if _, err := c.store.GetActiveRunBySession(ctx, sessionID); err == nil {
-		gate.Unlock()
-		return false, nil
-	} else if !errors.Is(err, ErrNotFound) {
-		gate.Unlock()
+	result, err := c.consumeNextPendingSessionInput(ctx, sessionID)
+	if err != nil || result.Run.ID == "" {
 		return false, err
 	}
-	if err := c.queuePendingSteersForInactiveSession(ctx, sessionID); err != nil {
-		gate.Unlock()
-		return false, err
-	}
-	input, err := c.store.NextPendingSessionInput(ctx, sessionID)
-	if errors.Is(err, ErrNotFound) {
-		gate.Unlock()
-		return false, nil
-	}
-	if err != nil {
-		gate.Unlock()
-		return false, err
-	}
-	session, err := c.store.GetSession(ctx, sessionID)
-	if err != nil {
-		gate.Unlock()
-		return false, err
-	}
-	result, err = c.consumeSessionInputAsRun(ctx, session, input)
-	if err != nil {
-		gate.Unlock()
-		return false, err
-	}
-	startRunID = result.Run.ID
-	gate.Unlock()
-
-	if startRunID == "" {
-		return false, nil
-	}
-	if err := c.startRun(ctx, startRunID); err != nil {
+	if err := c.startRun(ctx, result.Run.ID); err != nil {
 		_, failErr := c.failAcceptedRun(ctx, result, err)
 		return true, failErr
 	}
 	return true, nil
+}
+
+// consumeNextPendingSessionInput turns the session's next pending input into
+// an accepted run while no run is active; the result has no run otherwise.
+func (c *Core) consumeNextPendingSessionInput(ctx context.Context, sessionID string) (AcceptRunResult, error) {
+	gate := c.sessionGate(sessionID)
+	gate.Lock()
+	defer gate.Unlock()
+	if _, err := c.store.GetActiveRunBySession(ctx, sessionID); err == nil {
+		return AcceptRunResult{}, nil
+	} else if !errors.Is(err, ErrNotFound) {
+		return AcceptRunResult{}, err
+	}
+	if err := c.queuePendingSteersForInactiveSession(ctx, sessionID); err != nil {
+		return AcceptRunResult{}, err
+	}
+	input, err := c.store.NextPendingSessionInput(ctx, sessionID)
+	if errors.Is(err, ErrNotFound) {
+		return AcceptRunResult{}, nil
+	}
+	if err != nil {
+		return AcceptRunResult{}, err
+	}
+	session, err := c.store.GetSession(ctx, sessionID)
+	if err != nil {
+		return AcceptRunResult{}, err
+	}
+	return c.consumeSessionInputAsRun(ctx, session, input)
 }
 
 func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, input SessionInput) (AcceptRunResult, error) {
@@ -271,47 +224,6 @@ func (c *Core) consumeSessionInputAsRun(ctx context.Context, session Session, in
 	result.Input = &input
 	c.publishSessionInputUpdated(input)
 	return result, nil
-}
-
-func (c *Core) prepareSessionRunDelivery(run Run, text string, parts []transcript.MessagePart, client string, externalKey string, to deliveryTo) (ClientDelivery, bool, error) {
-	if client == "" || externalKey == "" {
-		return ClientDelivery{}, false, nil
-	}
-	delivery := ClientDelivery{
-		Type:        ClientDeliveryTypeRun,
-		Client:      client,
-		ExternalKey: externalKey,
-		SessionID:   run.SessionID,
-		RunID:       run.ID,
-		Summary:     sessionRunDeliverySummary(text, parts),
-		Address:     cloneRawMessage(to.Address),
-		ReplyOnce:   to.ReplyOnce,
-		Status:      ClientDeliveryStatusPending,
-	}
-	prepared, err := c.prepareClientDelivery(delivery)
-	if err != nil {
-		return ClientDelivery{}, false, err
-	}
-	return prepared, true, nil
-}
-
-func sessionRunDeliverySummary(text string, parts []transcript.MessagePart) string {
-	summary := strings.Join(strings.Fields(text), " ")
-	if summary == "" {
-		for _, part := range parts {
-			if part.Text == nil {
-				continue
-			}
-			summary = strings.Join(strings.Fields(part.Text.Text), " ")
-			if summary != "" {
-				break
-			}
-		}
-	}
-	if summary == "" {
-		summary = "User message"
-	}
-	return textutil.Clip(summary, 240, "...")
 }
 
 func cloneRawMessage(raw json.RawMessage) json.RawMessage {

@@ -20,13 +20,6 @@ import (
 // merged or discarded before the daemon start removes it.
 const staleWorktreeAge = 7 * 24 * time.Hour
 
-// WithWorktrees sets the directory holding the git worktrees of worktree
-// subagents; without one worktree isolation is unavailable.
-func (c *Core) WithWorktrees(dir string) *Core {
-	c.worktrees = dir
-	return c
-}
-
 func normalizeSubagentIsolation(value string) SubagentIsolation {
 	if strings.EqualFold(strings.TrimSpace(value), string(SubagentIsolationWorktree)) {
 		return SubagentIsolationWorktree

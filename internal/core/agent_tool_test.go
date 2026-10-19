@@ -46,10 +46,10 @@ func TestReadonlyChildrenRunTogetherWithReadOnlyTools(t *testing.T) {
 	edit := funcTool{spec: recoveryToolSpec("edit_file", tools.EffectMutation), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		return tools.Result{Content: "edited"}, nil
 	}}
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), probe, edit)...))
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), probe, edit)...))
 	var mu sync.Mutex
 	var childTools [][]string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		prompt := childPrompt(request)
 		answered := len(toolResults(request)) > 0
 		switch {
@@ -110,9 +110,9 @@ func TestReadonlyChildCannotUseAMutatingTool(t *testing.T) {
 	edit := funcTool{spec: recoveryToolSpec("edit_file", tools.EffectMutation), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		return tools.Result{Content: "edited"}, nil
 	}}
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), edit)...))
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), edit)...))
 	var rejected string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		results := toolResults(request)
 		switch {
 		case childPrompt(request) != "" && len(results) == 0:
@@ -139,10 +139,10 @@ func TestReadonlyChildCannotUseAMutatingTool(t *testing.T) {
 
 func TestBackgroundChildrenAreLimitedPerSession(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	app.SetTuning(core.Tuning{BackgroundAgents: 1})
-	app.WithRunStarter(&recordingRunStarter{})
 	session, run := saveCrashRecoveryRun(t, db, "limit", core.RunStatusRunning, false)
 	start := func(callID string) (core.AgentResult, error) {
 		return app.RunAgent(context.Background(), core.AgentInput{ParentSessionID: session.ID, ParentRunID: run.ID, ParentToolCallID: callID, Description: "Scan", Prompt: "scan the tree", Background: true})
@@ -163,13 +163,13 @@ func TestBackgroundChildrenAreLimitedPerSession(t *testing.T) {
 
 func TestBackgroundChildrenStartedTogetherKeepTheLimit(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	app.SetTuning(core.Tuning{BackgroundAgents: 2})
-	app.WithRunStarter(&recordingRunStarter{})
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	var results []string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if results = toolResults(request); len(results) > 0 {
 			return providers.Response{Text: "Started."}, nil
 		}
@@ -202,7 +202,7 @@ func TestBackgroundChildrenStartedTogetherKeepTheLimit(t *testing.T) {
 
 func TestCancelingARunStopsTheCommandsItStarted(t *testing.T) {
 	t.Parallel()
-	app, db, session, _ := newTaskCore(t)
+	app, db, session, _ := newTaskCore(t, core.Config{})
 	now := runRecoveryTestTime()
 	for _, id := range []string{"run_one", "run_two"} {
 		user := transcript.Message{ID: "msg_" + id, SessionID: session.ID, RunID: id, Role: transcript.MessageRoleUser, CreatedAt: now, UpdatedAt: now}
@@ -236,15 +236,15 @@ func TestCancelingARunStopsTheCommandsItStarted(t *testing.T) {
 
 func TestAFinishedChildsBackgroundCommandsStop(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithSessionFiles(t.TempDir())
+	app := core.New(core.Config{Store: db, SessionFiles: t.TempDir()})
 	registry := tools.NewRegistry(core.AgentToolExecutors(app)...)
 	if err := registry.Register(tools.NewShellExecutors(app)...); err != nil {
 		t.Fatal(err)
 	}
-	app.WithTools(registry)
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetTools(registry)
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		answered := len(toolResults(request)) > 0
 		switch {
 		case childPrompt(request) != "" && !answered:
@@ -279,9 +279,9 @@ func TestAgentToolOffersOnlyAvailableRuntimes(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	var request providers.Request
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, seen providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, seen providers.Request) (providers.Response, error) {
 		request = seen
 		return providers.Response{Text: "Hi."}, nil
 	})})
@@ -321,14 +321,13 @@ func TestReadonlyChildsApprovalIsRefusedWithoutAskingTheParent(t *testing.T) {
 	for _, background := range []bool{false, true} {
 		t.Run(map[bool]string{false: "blocking", true: "background"}[background], func(t *testing.T) {
 			t.Parallel()
-			app, db, cleanup := newCrashRecoveryCore(t)
+			db, cleanup := newCrashRecoveryStore(t)
 			defer cleanup()
-			starter := &executingRunStarter{app: app}
-			app.WithRunStarter(starter)
-			app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), askingReadTool("ask_read"))...))
+			app, starter := executingCore(core.Config{Store: db})
+			app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), askingReadTool("ask_read"))...))
 			var mu sync.Mutex
 			var childSaw string
-			app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+			app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 				results := toolResults(request)
 				switch {
 				case childPrompt(request) != "" && len(results) == 0:
@@ -375,9 +374,9 @@ func TestReadonlyChildsApprovalIsRefusedWithoutAskingTheParent(t *testing.T) {
 
 func TestAChildsLabelIsOneLine(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithRunStarter(&recordingRunStarter{})
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	session, run := saveCrashRecoveryRun(t, db, "labels", core.RunStatusRunning, false)
 	for _, tc := range []struct{ description, prompt, want string }{
 		{"  Scan\n\tthe   tree ", "scan it", "Scan the tree"},

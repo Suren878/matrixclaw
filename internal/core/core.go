@@ -10,9 +10,11 @@ import (
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
 	"github.com/Suren878/matrixclaw/internal/agent/toolsched"
 	"github.com/Suren878/matrixclaw/internal/checkpoint"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/externalagents"
 	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/ids"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/sandbox"
 )
 
@@ -31,8 +33,9 @@ type Core struct {
 	tools           ToolExecutor
 	lspAvailable    func(workingDir string) bool
 	skillsContext   SkillsPromptContextProvider
+	memory          Memory
 	runtimeStatus   RuntimeStatusContextProvider
-	events          *eventBus
+	events          *events.Bus
 	now             func() time.Time
 	newID           func(prefix string) string
 	lifetime        context.Context
@@ -72,10 +75,8 @@ type Core struct {
 	// startingAgents are the children each parent session is starting, by
 	// name, and whether each runs in the background; guarded by mu.
 	startingAgents map[string]map[string]bool
-	// runEnds are the callers waiting for each run to end, and runsEnding
-	// counts each run's ending transitions not followed up yet; guarded by mu.
-	runEnds    map[string][]chan struct{}
-	runsEnding map[string]int
+	// runEnds are the callers waiting for runs to end.
+	runEnds runEnds
 	// checkpoints snapshots working directories before tool batches that
 	// change files; nil when file checkpoints are off.
 	checkpoints *checkpoint.Store
@@ -101,6 +102,14 @@ type SkillsPromptContextProvider interface {
 	SkillsPromptContext(context.Context, SkillsPromptContextRequest) string
 }
 
+// Memory is the persistent memory native runs are shown and session reviews
+// suggest entries to.
+type Memory interface {
+	List(ctx context.Context, filter memory.Filter) ([]memory.Entry, error)
+	Create(ctx context.Context, entry memory.Entry) (memory.Entry, error)
+	PromptContext(ctx context.Context, workingDir string) (string, error)
+}
+
 type RuntimeStatusContextRequest struct {
 	SessionID  string
 	RunID      string
@@ -118,67 +127,103 @@ type AssistantProfile struct {
 	CustomInstructions string
 }
 
-func New(store Store) *Core {
+// Config holds what a Core is built with. Each field is read while runs
+// execute, so a Core takes them once here; what changes while the daemon
+// serves, or is built on the Core itself, goes through the Set* methods.
+type Config struct {
+	Store Store
+	// Clock defaults to time.Now.
+	Clock func() time.Time
+	// Lifetime is the daemon's; interrupted runs are rescheduled only while
+	// it is alive. It defaults to context.Background.
+	Lifetime context.Context
+	// RunStarter defaults to executing each run in a goroutine of its own.
+	RunStarter  RunStarter
+	Attachments agentcontext.AttachmentReader
+	// ExternalAgents is the registry runs start with; SetExternalAgents swaps it.
+	ExternalAgents     *externalagents.Registry
+	ExternalAgentStore externalagents.AttachmentStore
+	SkillsContext      SkillsPromptContextProvider
+	// Memory is shown to native runs; nil shows none.
+	Memory Memory
+	// SkillLearning turns on session reviews, which file what they find with it.
+	SkillLearning SkillLearning
+	// PromptEnvironment is where native runs are told they work; without a
+	// timezone their clock reads in UTC.
+	PromptEnvironment PromptEnvironment
+	// SessionFiles holds per-session files such as full tool outputs; a
+	// session's files are removed with it.
+	SessionFiles string
+	// Worktrees holds the git worktrees of worktree subagents; without it
+	// worktree isolation is unavailable.
+	Worktrees string
+	// Checkpoints snapshots working directories before tool batches that
+	// change files; nil takes none.
+	Checkpoints *checkpoint.Store
+	// CommandEnvironment is read for every shell command; nil inherits the
+	// daemon's environment.
+	CommandEnvironment func() []string
+	// Sandbox is read for every shell command; nil leaves commands unconfined.
+	Sandbox func() sandbox.Settings
+	// Hooks runs the user's hooks and the checks after edits; nil runs none.
+	Hooks *hooks.Runner
+	// LSPAvailable says whether a language server serves a project; nil never
+	// offers the lsp tool.
+	LSPAvailable func(workingDir string) bool
+}
+
+func New(cfg Config) *Core {
 	c := &Core{
-		store:         store,
-		activeRuns:    map[string]*activeRun{},
-		scheduledRuns: map[string]time.Time{},
-		sessionGates:  map[string]*sessionGate{},
-		liveTasks:     map[string]*liveTask{},
-		runEnds:       map[string][]chan struct{}{},
-		runsEnding:    map[string]int{},
-		events:        newEventBus(),
-		now:           time.Now,
-		newID:         ids.New,
-		lifetime:      context.Background(),
-		modelSlots:    toolsched.NewSemaphore(DefaultModelConcurrency),
-		toolLocks:     toolsched.NewLocks(),
+		store:          cfg.Store,
+		runStarter:     cfg.RunStarter,
+		attachments:    cfg.Attachments,
+		externalAgents: cfg.ExternalAgents,
+		externalStore:  cfg.ExternalAgentStore,
+		skillsContext:  cfg.SkillsContext,
+		memory:         cfg.Memory,
+		promptEnv:      cfg.PromptEnvironment,
+		sessionFiles:   strings.TrimSpace(cfg.SessionFiles),
+		worktrees:      cfg.Worktrees,
+		checkpoints:    cfg.Checkpoints,
+		commandEnv:     cfg.CommandEnvironment,
+		sandbox:        cfg.Sandbox,
+		hooks:          cfg.Hooks,
+		lspAvailable:   cfg.LSPAvailable,
+		reviews:        sessionReviews{learning: cfg.SkillLearning},
+		activeRuns:     map[string]*activeRun{},
+		scheduledRuns:  map[string]time.Time{},
+		sessionGates:   map[string]*sessionGate{},
+		liveTasks:      map[string]*liveTask{},
+		events:         events.NewBus(),
+		now:            cfg.Clock,
+		newID:          ids.New,
+		lifetime:       cfg.Lifetime,
+		modelSlots:     toolsched.NewSemaphore(DefaultModelConcurrency),
+		toolLocks:      toolsched.NewLocks(),
 	}
-	c.runStarter = goroutineStarter{c}
+	if c.now == nil {
+		c.now = time.Now
+	}
+	if c.lifetime == nil {
+		c.lifetime = context.Background()
+	}
+	if c.runStarter == nil {
+		c.runStarter = goroutineStarter{c}
+	}
 	c.SetTuning(Tuning{})
 	return c
 }
 
-// The With* builder methods below configure a Core during single-threaded
-// construction, before the daemon starts serving. Except for WithSessionLLMs,
-// they mutate Core fields without holding c.mu and therefore MUST NOT be called
-// after any run has started or after the Core is shared across goroutines —
-// doing so races with the agent loop reading those fields. Post-construction
-// mutation must go through the Set* methods (SetSessionLLMs,
-// SetAssistantProfile, SetExternalAgents, SetTuning).
-func (c *Core) WithAttachmentReader(reader agentcontext.AttachmentReader) *Core {
-	if reader != nil {
-		c.attachments = reader
-	}
-	return c
+// SetTools wires the tool executor, which is built on this Core; call it
+// before the Core serves.
+func (c *Core) SetTools(tools ToolExecutor) {
+	c.tools = tools
 }
 
-func (c *Core) WithClock(now func() time.Time) *Core {
-	if now != nil {
-		c.now = now
-	}
-	return c
-}
-
-// WithLifetime sets the daemon lifetime; interrupted runs are rescheduled only while it is alive.
-func (c *Core) WithLifetime(ctx context.Context) *Core {
-	if ctx != nil {
-		c.lifetime = ctx
-	}
-	return c
-}
-
-func (c *Core) WithRunStarter(starter RunStarter) *Core {
-	if starter != nil {
-		c.runStarter = starter
-	}
-	return c
-}
-
-func (c *Core) WithExternalAgents(registry *externalagents.Registry, store externalagents.AttachmentStore) *Core {
-	c.externalStore = store
-	c.SetExternalAgents(registry)
-	return c
+// SetRuntimeStatusContext wires the note on module state, whose provider
+// is built on this Core; call it before the Core serves.
+func (c *Core) SetRuntimeStatusContext(provider RuntimeStatusContextProvider) {
+	c.runtimeStatus = provider
 }
 
 // SetExternalAgents swaps the external agent registry while the daemon serves.
@@ -192,15 +237,6 @@ func (c *Core) externalAgentRegistry() *externalagents.Registry {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.externalAgents
-}
-
-func (c *Core) WithSessionLLMs(registry SessionLLMRegistry) *Core {
-	if registry != nil {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.llms = registry
-	}
-	return c
 }
 
 func (c *Core) SetSessionLLMs(registry SessionLLMRegistry) {
@@ -232,25 +268,4 @@ func (c *Core) sessionLLMs() SessionLLMRegistry {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.llms
-}
-
-func (c *Core) WithTools(toolExecutor ToolExecutor) *Core {
-	if toolExecutor != nil {
-		c.tools = toolExecutor
-	}
-	return c
-}
-
-func (c *Core) WithSkillsContext(provider SkillsPromptContextProvider) *Core {
-	if provider != nil {
-		c.skillsContext = provider
-	}
-	return c
-}
-
-func (c *Core) WithRuntimeStatusContext(provider RuntimeStatusContextProvider) *Core {
-	if provider != nil {
-		c.runtimeStatus = provider
-	}
-	return c
 }

@@ -38,13 +38,13 @@ func TestReadsOfOneReplyRunAtOnceInANativeRun(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	started, release := make(chan struct{}, 2), make(chan struct{})
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
 		started <- struct{}{}
 		<-release
 		return tools.Result{Content: "inspected " + call.ToolCallID}, nil
 	}}))
 	var results []string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if results = toolResults(request); len(results) > 0 {
 			return providers.Response{Text: "Done."}, nil
 		}
@@ -95,8 +95,8 @@ func TestAllowedMutationsOfTwoSessionsInOneDirectoryTakeTurns(t *testing.T) {
 		close(secondReading)
 		return tools.Result{Content: "inspected"}, nil
 	}}
-	app.WithTools(tools.NewRegistry(mutate, inspect))
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetTools(tools.NewRegistry(mutate, inspect))
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		switch {
 		case len(toolResults(request)) > 0:
 			return providers.Response{Text: "Done."}, nil
@@ -135,11 +135,11 @@ func TestDelegatedChildChangesTheParentsDirectoryWithoutDeadlock(t *testing.T) {
 	defer cleanup()
 	edit := recoveryToolSpec("mutate_state", tools.EffectMutation)
 	edits := 0
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), funcTool{spec: edit, fn: func(context.Context, tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), funcTool{spec: edit, fn: func(context.Context, tools.Call) (tools.Result, error) {
 		edits++
 		return tools.Result{Content: "mutated"}, nil
 	}})...))
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		answered := len(toolResults(request)) > 0
 		switch {
 		case strings.Contains(request.SystemPrompt, "Subagent mode:") && !answered:

@@ -26,7 +26,7 @@ func blocked(result core.ExecuteToolResult) bool {
 
 func TestPlanModeBlocksChangesAndLetsReadOnlyCallsRun(t *testing.T) {
 	t.Parallel()
-	app, db, bash, dir := permissionCore(t)
+	app, db, bash, dir := permissionCore(t, core.Config{})
 	plan := permissionSession(t, db, "session_plan", dir, core.PermissionModePlan, "")
 	saveRule(t, db, "rule_bash", permission.Rule{Tool: "bash", Effect: permission.Allow, SessionID: plan.ID})
 
@@ -65,7 +65,7 @@ func TestPlanModeBlocksChangesAndLetsReadOnlyCallsRun(t *testing.T) {
 
 func TestApplyPatchMeetsEditRulesForEveryFile(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
+	app, db, _, dir := permissionCore(t, core.Config{})
 	edits := permissionSession(t, db, "session_patch", dir, core.PermissionModeAcceptEdits, "")
 	inside := `{"input":"*** Begin Patch\n*** Add File: a.txt\n+a\n*** Add File: sub/b.txt\n+b\n*** End Patch"}`
 	if result := executeTool(t, app, edits.ID, "apply_patch", inside); result.Approval != nil || blocked(result) {
@@ -88,12 +88,11 @@ func TestApplyPatchMeetsEditRulesForEveryFile(t *testing.T) {
 
 func TestApprovingThePlanSwitchesToAcceptEditsAndTheRunGoesOn(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
-	app.WithTools(tools.NewRegistry(append(tools.CoreExecutors(), core.PlanModeToolExecutors(app)...)...))
-	app.WithRunStarter(&recordingRunStarter{})
+	app, db, _, dir := permissionCore(t, core.Config{RunStarter: &recordingRunStarter{}})
+	app.SetTools(tools.NewRegistry(append(tools.CoreExecutors(), core.PlanModeToolExecutors(app)...)...))
 	var offered [][]string
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		var names []string
 		for _, tool := range request.Tools {
 			names = append(names, tool.Name)
@@ -174,9 +173,9 @@ func sessionMode(t *testing.T, db *store.SQLiteStore, id string) core.Permission
 func TestModelsTrainedOnApplyPatchGetItInsteadOfEdit(t *testing.T) {
 	t.Parallel()
 	for model, want := range map[string][]string{"gpt-5.1-codex": {"apply_patch"}, "claude-sonnet-4-5": {"edit", "multiedit"}} {
-		app, db, _, dir := permissionCore(t)
+		app, db, _, dir := permissionCore(t, core.Config{})
 		var offered []string
-		app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+		app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 			for _, tool := range request.Tools {
 				offered = append(offered, tool.Name)
 			}

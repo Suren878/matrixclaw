@@ -51,16 +51,14 @@ func childTask(request providers.Request) string {
 
 func TestDecidingOneOfTwoAskingChildrenLeavesTheParentWaiting(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	starter := &executingRunStarter{app: app}
-	app.WithRunStarter(starter)
-	app.WithWorktrees(t.TempDir())
+	app, starter := executingCore(core.Config{Store: db, Worktrees: t.TempDir()})
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate)...))
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate)...))
 	var mu sync.Mutex
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		answered := len(toolResults(request)) > 0
@@ -107,10 +105,9 @@ func TestDecidingOneOfTwoAskingChildrenLeavesTheParentWaiting(t *testing.T) {
 
 func TestBackgroundChildrenInTheParentsDirectoryRunTogetherAndTakeTurnsPerEdit(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	starter := &executingRunStarter{app: app}
-	app.WithRunStarter(starter)
+	app, starter := executingCore(core.Config{Store: db})
 	firstEditing, bothAsked, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var mu sync.Mutex
 	editing, edits, asked := 0, 0, 0
@@ -131,8 +128,8 @@ func TestBackgroundChildrenInTheParentsDirectoryRunTogetherAndTakeTurnsPerEdit(t
 		mu.Unlock()
 		return tools.Result{Content: "mutated"}, nil
 	}}
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), edit)...))
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), edit)...))
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		answered := len(toolResults(request)) > 0
 		switch task := childTask(request); {
 		case task != "" && !answered:
@@ -183,15 +180,15 @@ func TestBackgroundChildrenInTheParentsDirectoryRunTogetherAndTakeTurnsPerEdit(t
 // telling on each step.
 func writingChildren(t *testing.T, args string, dir string, on func(task string, step string, call tools.Call)) {
 	t.Helper()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	t.Cleanup(cleanup)
-	app.WithWorktrees(t.TempDir())
+	app := core.New(core.Config{Store: db, Worktrees: t.TempDir()})
 	editTool := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
 		on(strings.TrimPrefix(call.ToolCallID, "edit-"), "edits", call)
 		return tools.Result{Content: "mutated"}, nil
 	}}
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), editTool)...))
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), editTool)...))
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		answered := len(toolResults(request)) > 0
 		switch task := childTask(request); {
 		case task != "" && !answered:

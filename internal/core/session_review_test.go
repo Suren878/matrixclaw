@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/setup"
@@ -50,8 +51,9 @@ func newReviewHarness(t *testing.T, cfg setup.SkillsConfig) *reviewHarness {
 
 // core is a daemon at now; call stop before the next one starts.
 func (h *reviewHarness) core(now time.Time) *core.Core {
-	app := core.New(h.db).WithClock(func() time.Time { return now }).WithTools(tools.NewRegistry()).WithSkillLearning(h.skills)
-	app.WithSessionLLMs(twoModelLLMs{
+	app := core.New(core.Config{Store: h.db, Clock: func() time.Time { return now }, SkillLearning: h.skills, Memory: memory.New(h.db, nil)})
+	app.SetTools(tools.NewRegistry())
+	app.SetSessionLLMs(twoModelLLMs{
 		recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 			return providers.Response{Text: "done"}, nil
 		})},
@@ -152,21 +154,22 @@ func TestSessionReviewFilesQuarantinedDraftsAndPendingMemory(t *testing.T) {
 	if usable, _ := h.skills.Service().List(ctx, skills.SearchOptions{}); len(usable) != 0 {
 		t.Fatalf("runs can use %+v", usable)
 	}
-	pending, err := app.ListMemories(ctx, core.MemoryFilter{Pending: true})
+	memories := memory.New(h.db, nil)
+	pending, err := memories.List(ctx, memory.Filter{Pending: true})
 	if err != nil || len(pending) != 1 || pending[0].Content != "The user wants commit messages in English." {
 		t.Fatalf("pending memory = %+v err = %v", pending, err)
 	}
-	if approved, _ := app.ListMemories(ctx, core.MemoryFilter{}); len(approved) != 0 || app.MemoryPromptContext(ctx, session.WorkingDir) != "" {
+	if approved, _ := memories.List(ctx, memory.Filter{}); len(approved) != 0 || promptMemory(t, memories, session.WorkingDir) != "" {
 		t.Fatalf("runs see unapproved memory: %+v", approved)
 	}
 	if notices := systemNotices(t, h.db, session.ID); len(notices) != 1 || !strings.Contains(notices[0], "/modules skills section review") || !strings.Contains(notices[0], "/memory pending") {
 		t.Fatalf("notices = %q", notices)
 	}
 
-	if _, err := app.ApproveMemory(ctx, pending[0].ID); err != nil {
+	if _, err := memories.Approve(ctx, pending[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(app.MemoryPromptContext(ctx, session.WorkingDir), "commit messages in English") {
+	if !strings.Contains(promptMemory(t, memories, session.WorkingDir), "commit messages in English") {
 		t.Fatal("an approved suggestion is not remembered")
 	}
 }
@@ -212,7 +215,7 @@ func TestSessionReviewRunsOncePerIntervalAcrossRestarts(t *testing.T) {
 	if h.asked.Load() != 2 || h.reviewSteps(runs...) != 2 {
 		t.Fatalf("asked = %d after the interval, want 2", h.asked.Load())
 	}
-	if pending, _ := h.db.ListMemories(context.Background(), core.MemoryFilter{Pending: true}); len(pending) != 1 {
+	if pending, _ := h.db.ListMemories(context.Background(), memory.Filter{Pending: true}); len(pending) != 1 {
 		t.Fatalf("the same suggestion was filed twice: %+v", pending)
 	}
 }
@@ -245,7 +248,7 @@ func TestSessionReviewIgnoresAReplyThatIsNoReview(t *testing.T) {
 	h.end(h.core(start.Add(time.Minute)), run)
 
 	all, _ := h.skills.Service().List(context.Background(), skills.SearchOptions{IncludeQuarantined: true, IncludeDisabled: true})
-	pending, _ := h.db.ListMemories(context.Background(), core.MemoryFilter{Pending: true})
+	pending, _ := h.db.ListMemories(context.Background(), memory.Filter{Pending: true})
 	if h.asked.Load() != 1 || h.reviewSteps(run.ID) != 1 || len(all) != 0 || len(pending) != 0 || len(systemNotices(t, h.db, session.ID)) != 0 {
 		t.Fatalf("asked = %d skills = %+v pending = %+v notices = %q", h.asked.Load(), all, pending, systemNotices(t, h.db, session.ID))
 	}
@@ -301,4 +304,13 @@ func systemNotices(t *testing.T, db *store.SQLiteStore, sessionID string) []stri
 		}
 	}
 	return notices
+}
+
+func promptMemory(t *testing.T, memories *memory.Service, workingDir string) string {
+	t.Helper()
+	text, err := memories.PromptContext(context.Background(), workingDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return text
 }

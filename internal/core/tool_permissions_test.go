@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
@@ -74,10 +75,12 @@ func (webTool) PermissionSubject(tools.Call) permission.Subject {
 }
 
 // permissionCore has the real file tools and a fake bash over a temp working directory.
-func permissionCore(t *testing.T) (*core.Core, *store.SQLiteStore, *commandTool, string) {
+func permissionCore(t *testing.T, cfg core.Config) (*core.Core, *store.SQLiteStore, *commandTool, string) {
 	t.Helper()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	t.Cleanup(cleanup)
+	cfg.Store = db
+	app := core.New(cfg)
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +95,7 @@ func permissionCore(t *testing.T) (*core.Core, *store.SQLiteStore, *commandTool,
 	}
 	bash := &commandTool{}
 	registry := tools.NewRegistry(append(tools.CoreExecutors(), bash, webTool{})...)
-	app.WithTools(registry)
+	app.SetTools(registry)
 	return app, db, bash, dir
 }
 
@@ -139,7 +142,7 @@ func resultText(result core.ExecuteToolResult) string {
 
 func TestDenyRuleBlocksAReadOnlyToolForRunsAndDirectCalls(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
+	app, db, _, dir := permissionCore(t, core.Config{})
 	session := permissionSession(t, db, "session_deny", dir, core.PermissionModeFullAuto, "")
 	saveRule(t, db, "rule_secret", permission.Rule{Tool: "read", Pattern: filepath.Join(dir, "secret") + "/**", Effect: permission.Deny, SessionID: session.ID})
 	blocked := "Blocked by rule read: " + filepath.Join(dir, "secret") + "/**"
@@ -152,7 +155,7 @@ func TestDenyRuleBlocksAReadOnlyToolForRunsAndDirectCalls(t *testing.T) {
 	}
 
 	var saw string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if saw = toolResultContent(request, "call-read"); saw == "" {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-read", Name: "read", Arguments: []byte(`{"file_path":"secret/key.txt"}`)}}}, nil
 		}
@@ -174,7 +177,7 @@ func TestDenyRuleBlocksAReadOnlyToolForRunsAndDirectCalls(t *testing.T) {
 
 func TestAskRuleAsksBeforeAReadOnlyTool(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
+	app, db, _, dir := permissionCore(t, core.Config{})
 	session := permissionSession(t, db, "session_ask", dir, core.PermissionModeDefault, "")
 	saveRule(t, db, "rule_ask", permission.Rule{Tool: "read", Pattern: dir + "/**", Effect: permission.Ask, SessionID: session.ID})
 
@@ -190,7 +193,7 @@ func TestAskRuleAsksBeforeAReadOnlyTool(t *testing.T) {
 
 func TestAllowRuleRunsMatchingCommandsWithoutAsking(t *testing.T) {
 	t.Parallel()
-	app, db, bash, dir := permissionCore(t)
+	app, db, bash, dir := permissionCore(t, core.Config{})
 	session := permissionSession(t, db, "session_allow", dir, core.PermissionModeDefault, "")
 	saveRule(t, db, "rule_echo", permission.Rule{Tool: "bash", Pattern: "echo:*", Effect: permission.Allow, SessionID: session.ID})
 
@@ -210,7 +213,7 @@ func TestAllowRuleRunsMatchingCommandsWithoutAsking(t *testing.T) {
 
 func TestSubagentsAndOtherSessionsFollowInheritedAndGlobalRules(t *testing.T) {
 	t.Parallel()
-	app, db, bash, dir := permissionCore(t)
+	app, db, bash, dir := permissionCore(t, core.Config{})
 	parent := permissionSession(t, db, "session_parent", dir, core.PermissionModeFullAuto, "")
 	child := permissionSession(t, db, "session_child", dir, core.PermissionModeFullAuto, parent.ID)
 	other := permissionSession(t, db, "session_other", dir, core.PermissionModeFullAuto, "")
@@ -233,7 +236,7 @@ func TestSubagentsAndOtherSessionsFollowInheritedAndGlobalRules(t *testing.T) {
 
 func TestModePresetsAllowEditsInsideTheWorkingDirectoryOrEverything(t *testing.T) {
 	t.Parallel()
-	app, db, bash, dir := permissionCore(t)
+	app, db, bash, dir := permissionCore(t, core.Config{})
 	edits := permissionSession(t, db, "session_edits", dir, core.PermissionModeAcceptEdits, "")
 	auto := permissionSession(t, db, "session_auto", dir, core.PermissionModeFullAuto, "")
 	outside := filepath.Join(t.TempDir(), "outside.txt")
@@ -259,7 +262,7 @@ func TestModePresetsAllowEditsInsideTheWorkingDirectoryOrEverything(t *testing.T
 func TestAlwaysAllowKeepsTheSuggestedRule(t *testing.T) {
 	t.Parallel()
 	for _, scope := range []permission.Scope{permission.ScopeSession, permission.ScopeGlobal} {
-		app, db, bash, dir := permissionCore(t)
+		app, db, bash, dir := permissionCore(t, core.Config{})
 		session := permissionSession(t, db, "session_always", dir, core.PermissionModeDefault, "")
 		other := permissionSession(t, db, "session_other", dir, core.PermissionModeDefault, "")
 
@@ -285,7 +288,7 @@ func TestAlwaysAllowKeepsTheSuggestedRule(t *testing.T) {
 
 func TestAlwaysAllowNeedsASuggestedRule(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
+	app, db, _, dir := permissionCore(t, core.Config{})
 	session := permissionSession(t, db, "session_risky", dir, core.PermissionModeDefault, "")
 	pending := executeTool(t, app, session.ID, "bash", `{"command":"go test ./... > out.txt"}`)
 	if pending.Approval == nil || pending.Approval.Suggestion != nil {
@@ -304,7 +307,7 @@ func TestAlwaysAllowNeedsASuggestedRule(t *testing.T) {
 
 func TestAddedRulesNameAbsolutePathsAndKnownTools(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
+	app, db, _, dir := permissionCore(t, core.Config{})
 	session := permissionSession(t, db, "session_rules", dir, core.PermissionModeDefault, "")
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -364,8 +367,8 @@ func (mcpTool) PermissionSubject(tools.Call) permission.Subject {
 
 func TestAddedRuleForAnMCPToolNamesThatTool(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
-	app.WithTools(tools.NewRegistry(append(tools.CoreExecutors(), mcpTool{})...))
+	app, db, _, dir := permissionCore(t, core.Config{})
+	app.SetTools(tools.NewRegistry(append(tools.CoreExecutors(), mcpTool{})...))
 	session := permissionSession(t, db, "session_mcp", dir, core.PermissionModeDefault, "")
 	rule, err := app.AddPermissionRule(context.Background(), session.ID, core.PermissionRuleRequest{Tool: "mcp_github_create_issue", Effect: permission.Allow, Scope: permission.ScopeSession})
 	if err != nil || rule.String() != "mcp: github__create_issue" {
@@ -375,7 +378,7 @@ func TestAddedRuleForAnMCPToolNamesThatTool(t *testing.T) {
 
 func TestRedirectsMeetTheRulesOfTheCall(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
+	app, db, _, dir := permissionCore(t, core.Config{})
 	session := permissionSession(t, db, "session_redirect", dir, core.PermissionModeFullAuto, "")
 	if got := resultText(executeTool(t, app, session.ID, "web_fetch", `{}`)); got != "fetched" {
 		t.Fatalf("unruled redirect = %q", got)
@@ -392,7 +395,7 @@ func TestRedirectsMeetTheRulesOfTheCall(t *testing.T) {
 
 func TestAskRuleAsksBeforeAToolThatAsksOnItsOwn(t *testing.T) {
 	t.Parallel()
-	app, db, bash, dir := permissionCore(t)
+	app, db, bash, dir := permissionCore(t, core.Config{})
 	session := permissionSession(t, db, "session_ask_bash", dir, core.PermissionModeFullAuto, "")
 	saveRule(t, db, "rule_ask", permission.Rule{Tool: "bash", Pattern: "git push:*", Effect: permission.Ask, SessionID: session.ID})
 
@@ -404,7 +407,7 @@ func TestAskRuleAsksBeforeAToolThatAsksOnItsOwn(t *testing.T) {
 
 func TestGrepDoesNotFollowALinkToADeniedFile(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
+	app, db, _, dir := permissionCore(t, core.Config{})
 	session := permissionSession(t, db, "session_link", dir, core.PermissionModeFullAuto, "")
 	saveRule(t, db, "rule_secret", permission.Rule{Tool: "read", Pattern: filepath.Join(dir, "secret") + "/**", Effect: permission.Deny, SessionID: session.ID})
 	if err := os.MkdirAll(filepath.Join(dir, "public"), 0o755); err != nil {
@@ -421,7 +424,7 @@ func TestGrepDoesNotFollowALinkToADeniedFile(t *testing.T) {
 
 func TestSearchesLeaveOutWhatRulesGuardInsteadOfFailing(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
+	app, db, _, dir := permissionCore(t, core.Config{})
 	session := permissionSession(t, db, "session_search_rules", dir, core.PermissionModeFullAuto, "")
 	saveRule(t, db, "rule_secret", permission.Rule{Tool: "read", Pattern: filepath.Join(dir, "secret") + "/**", Effect: permission.Deny, SessionID: session.ID})
 
@@ -460,10 +463,10 @@ func (s scopedStore) ListApprovals(ctx context.Context, sessionID string, state 
 
 func TestAGrantRunsTheCallOnceAndReadsOnlyItsRun(t *testing.T) {
 	t.Parallel()
-	_, db, _, dir := permissionCore(t)
-	app := core.New(scopedStore{SQLiteStore: db, t: t})
+	_, db, _, dir := permissionCore(t, core.Config{})
+	app := core.New(core.Config{Store: scopedStore{SQLiteStore: db, t: t}})
 	bash := &commandTool{}
-	app.WithTools(tools.NewRegistry(bash))
+	app.SetTools(tools.NewRegistry(bash))
 	session := permissionSession(t, db, "session_grant", dir, core.PermissionModeDefault, "")
 	input := core.ExecuteToolInput{SessionID: session.ID, ToolName: "bash", ToolCallID: "call_grant", Args: json.RawMessage(`{"command":"make deploy"}`)}
 
@@ -485,8 +488,8 @@ func TestAGrantRunsTheCallOnceAndReadsOnlyItsRun(t *testing.T) {
 
 func TestMemoryListsWithoutAskingAndAsksToChange(t *testing.T) {
 	t.Parallel()
-	app, db, _, dir := permissionCore(t)
-	app.WithTools(tools.NewRegistry(core.MemoryToolExecutors(app)...))
+	app, db, _, dir := permissionCore(t, core.Config{})
+	app.SetTools(tools.NewRegistry(memory.NewTool(memory.New(db, nil))))
 	session := permissionSession(t, db, "session_memory", dir, core.PermissionModeDefault, "")
 	if listed := executeTool(t, app, session.ID, "memory", `{"action":"list"}`); listed.Approval != nil || listed.ToolResultMessage == nil {
 		t.Fatalf("list = %+v", listed)
@@ -498,7 +501,7 @@ func TestMemoryListsWithoutAskingAndAsksToChange(t *testing.T) {
 }
 
 func TestReadingWhereSecretsLiveAsksFirst(t *testing.T) {
-	app, db, _, dir := permissionCore(t)
+	app, db, _, dir := permissionCore(t, core.Config{})
 	t.Setenv("HOME", dir)
 	key := filepath.Join(dir, ".ssh", "id_ed25519")
 	if err := os.MkdirAll(filepath.Dir(key), 0o700); err != nil {

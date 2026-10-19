@@ -16,6 +16,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/daemonclient"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -95,7 +96,7 @@ func TestReloadingClosesThePreviousEventStream(t *testing.T) {
 	}
 }
 
-func liveMessage(t *testing.T, id uint64, eventType core.EventType, message transcript.Message) daemonclient.LiveEvent {
+func liveMessage(t *testing.T, id uint64, eventType events.Type, message transcript.Message) daemonclient.LiveEvent {
 	t.Helper()
 	raw, err := json.Marshal(message)
 	if err != nil {

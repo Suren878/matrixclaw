@@ -6,13 +6,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/sandbox"
 )
 
-// WithSandbox sets how the agent's shell commands are confined, read for
-// every command; without it they run unconfined.
-func (c *Core) WithSandbox(settings func() sandbox.Settings) *Core {
-	c.sandbox = settings
-	return c
-}
-
 // commandSandbox is the resolved sandbox of a command a session runs with
 // env: read_only in plan mode and for a read-only subagent, workspace_write
 // over the session's working directory as the settings say.

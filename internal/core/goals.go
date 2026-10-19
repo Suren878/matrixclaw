@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -14,7 +15,7 @@ import (
 const RunTriggerGoal RunTrigger = "goal"
 
 // EventGoalUpdated carries a GoalResponse whenever a session goal changes.
-const EventGoalUpdated EventType = "goal.updated"
+const EventGoalUpdated events.Type = "goal.updated"
 
 // SessionGoal returns the session's goal, nil when it has none.
 func (c *Core) SessionGoal(ctx context.Context, sessionID string) (GoalResponse, error) {
@@ -127,7 +128,7 @@ func (c *Core) ClearSessionGoal(ctx context.Context, sessionID string) (GoalResp
 	if err := c.store.DeleteSessionGoal(ctx, session.ID); err != nil {
 		return GoalResponse{}, err
 	}
-	c.publishEvent(Event{Type: EventGoalUpdated, SessionID: session.ID, Payload: GoalResponse{}})
+	c.publishEvent(events.Event{Type: EventGoalUpdated, SessionID: session.ID, Payload: GoalResponse{}})
 	return GoalResponse{}, nil
 }
 
@@ -160,7 +161,7 @@ func (c *Core) saveGoal(ctx context.Context, goal SessionGoal) error {
 	if err := c.store.SaveSessionGoal(ctx, goal); err != nil {
 		return err
 	}
-	c.publishEvent(Event{Type: EventGoalUpdated, SessionID: goal.SessionID, Payload: GoalResponse{Goal: &goal}})
+	c.publishEvent(events.Event{Type: EventGoalUpdated, SessionID: goal.SessionID, Payload: GoalResponse{Goal: &goal}})
 	return nil
 }
 

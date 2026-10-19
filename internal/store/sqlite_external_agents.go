@@ -60,12 +60,37 @@ ON CONFLICT(session_id) DO UPDATE SET
 	return nil
 }
 
-func (s *SQLiteStore) GetExternalAgentSession(ctx context.Context, sessionID string) (externalagents.SessionAttachment, error) {
-	row := s.db.QueryRowContext(ctx, `
-SELECT session_id, agent_id, external_thread_id, external_session_id, cwd, model, metadata_json, created_at, updated_at
-FROM external_agent_sessions
-WHERE session_id = ?`, sessionID)
+const externalAgentSessionColumns = `session_id, agent_id, external_thread_id, external_session_id, cwd, model, metadata_json, created_at, updated_at`
 
+func (s *SQLiteStore) GetExternalAgentSession(ctx context.Context, sessionID string) (externalagents.SessionAttachment, error) {
+	attachment, err := scanExternalAgentSession(s.db.QueryRowContext(ctx, `
+SELECT `+externalAgentSessionColumns+`
+FROM external_agent_sessions
+WHERE session_id = ?`, sessionID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return externalagents.SessionAttachment{}, core.ErrNotFound
+	}
+	if err != nil {
+		return externalagents.SessionAttachment{}, fmt.Errorf("store: get external agent session: %w", err)
+	}
+	return attachment, nil
+}
+
+func (s *SQLiteStore) ListExternalAgentSessions(ctx context.Context, sessionIDs []string) ([]externalagents.SessionAttachment, error) {
+	if len(sessionIDs) == 0 {
+		return nil, nil
+	}
+	args := make([]any, len(sessionIDs))
+	for i, id := range sessionIDs {
+		args[i] = id
+	}
+	return queryAll(ctx, s.db, "external agent sessions", scanExternalAgentSession, `
+SELECT `+externalAgentSessionColumns+`
+FROM external_agent_sessions
+WHERE session_id IN (?`+strings.Repeat(`, ?`, len(sessionIDs)-1)+`)`, args...)
+}
+
+func scanExternalAgentSession(row rowScanner) (externalagents.SessionAttachment, error) {
 	var attachment externalagents.SessionAttachment
 	var createdAt string
 	var updatedAt string
@@ -80,10 +105,7 @@ WHERE session_id = ?`, sessionID)
 		&createdAt,
 		&updatedAt,
 	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return externalagents.SessionAttachment{}, core.ErrNotFound
-		}
-		return externalagents.SessionAttachment{}, fmt.Errorf("store: get external agent session: %w", err)
+		return externalagents.SessionAttachment{}, err
 	}
 	attachment.CreatedAt = mustParseTime(createdAt)
 	attachment.UpdatedAt = mustParseTime(updatedAt)

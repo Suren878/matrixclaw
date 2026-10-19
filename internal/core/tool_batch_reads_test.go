@@ -66,10 +66,10 @@ func batchReads(t *testing.T, n int, subagent bool) int64 {
 	}
 	defer func() { _ = db.Close() }()
 	counting := &readCountingStore{SQLiteStore: db}
-	app := core.New(counting)
-	app.WithTools(tools.NewRegistry(&recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}))
+	app := core.New(core.Config{Store: counting})
+	app.SetTools(tools.NewRegistry(&recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}))
 	replies := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		if replies++; replies > 1 {
 			return providers.Response{Text: "Done."}, nil
 		}

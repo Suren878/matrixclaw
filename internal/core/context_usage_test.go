@@ -13,9 +13,9 @@ func TestRunStepsAnnounceContextUsageOnlyWhenItChanges(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(&recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}))
+	app.SetTools(tools.NewRegistry(&recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}))
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		calls++
 		usage := providers.Usage{PromptTokens: 700, OutputTokens: 20}
 		if calls < 3 {
@@ -27,7 +27,7 @@ func TestRunStepsAnnounceContextUsageOnlyWhenItChanges(t *testing.T) {
 	session, run := saveCrashRecoveryRun(t, db, "context-usage", core.RunStatusAccepted, false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	events := app.SubscribeEvents(ctx, session.ID)
+	events := app.SubscribeEvents(ctx, session.ID, 0)
 
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestClientSnapshotNamesTheNewestEventItCovers(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{Text: "Done."}, nil
 	})})
 	session, run := saveCrashRecoveryRun(t, db, "snapshot-event-id", core.RunStatusAccepted, false)
@@ -56,7 +56,7 @@ func TestClientSnapshotNamesTheNewestEventItCovers(t *testing.T) {
 	if _, err := app.UseBinding(ctx, core.UseBindingInput{Client: "terminal:test", ExternalKey: "local", SessionID: session.ID}); err != nil {
 		t.Fatal(err)
 	}
-	events := app.SubscribeEvents(ctx, session.ID)
+	events := app.SubscribeEvents(ctx, session.ID, 0)
 	if err := app.ExecuteRun(ctx, run.ID); err != nil {
 		t.Fatal(err)
 	}

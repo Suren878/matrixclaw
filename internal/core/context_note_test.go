@@ -3,11 +3,13 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
 	"github.com/Suren878/matrixclaw/internal/tools"
@@ -25,14 +27,14 @@ func twoStepRun(t *testing.T, app *core.Core, db *store.SQLiteStore, suffix stri
 	t.Helper()
 	ctx := context.Background()
 	session, run := saveCrashRecoveryRun(t, db, suffix, core.RunStatusAccepted, false)
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("change", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("change", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
 		if err := change(ctx, session.ID); err != nil {
 			return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
 		}
 		return tools.Result{Content: "changed"}, nil
 	}}))
 	var requests []providers.Request
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		requests = append(requests, request)
 		if len(requests) == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call_change", Name: "change", Arguments: json.RawMessage(`{}`)}}}, nil
@@ -54,14 +56,16 @@ func twoStepRun(t *testing.T, app *core.Core, db *store.SQLiteStore, suffix stri
 
 func TestMemoryWrittenDuringARunReachesTheModelAsAContextNote(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	if _, err := app.CreateMemory(context.Background(), core.MemoryEntry{Scope: core.MemoryScopeGlobal, Content: "prefers tabs"}); err != nil {
+	memories := memory.New(db, nil)
+	app := core.New(core.Config{Store: db, Memory: memories})
+	if _, err := memories.Create(context.Background(), memory.Entry{Scope: memory.ScopeGlobal, Content: "prefers tabs"}); err != nil {
 		t.Fatal(err)
 	}
 
 	requests := twoStepRun(t, app, db, "memory", func(ctx context.Context, _ string) error {
-		_, err := app.CreateMemory(ctx, core.MemoryEntry{Scope: core.MemoryScopeGlobal, Content: "uses Go 1.26"})
+		_, err := memories.Create(ctx, memory.Entry{Scope: memory.ScopeGlobal, Content: "uses Go 1.26"})
 		return err
 	})
 
@@ -79,7 +83,7 @@ func TestTodoAndRuntimeStatusChangesLeaveTheSystemPromptIntact(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	status := "Current runtime status: browser=off"
-	app.WithRuntimeStatusContext(runtimeStatusFunc(func() string { return status }))
+	app.SetRuntimeStatusContext(runtimeStatusFunc(func() string { return status }))
 
 	requests := twoStepRun(t, app, db, "todo", func(ctx context.Context, sessionID string) error {
 		status = "Current runtime status: browser=on"
@@ -103,10 +107,10 @@ func TestRuntimeStatusDescribesTheToolsTheRunWasGiven(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var seen [][]string
-	app.WithRuntimeStatusContext(runtimeStatusRecorder(func(req core.RuntimeStatusContextRequest) { seen = append(seen, req.ToolIDs) }))
+	app.SetRuntimeStatusContext(runtimeStatusRecorder(func(req core.RuntimeStatusContextRequest) { seen = append(seen, req.ToolIDs) }))
 
 	twoStepRun(t, app, db, "frozen_tools", func(context.Context, string) error {
-		app.WithTools(tools.NewRegistry(
+		app.SetTools(tools.NewRegistry(
 			funcTool{spec: recoveryToolSpec("change", tools.EffectReadOnly)},
 			funcTool{spec: recoveryToolSpec("added", tools.EffectReadOnly)},
 		))
@@ -134,9 +138,9 @@ func TestSubagentContextNoteCarriesItsOwnTodo(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.TodoToolExecutors(app)...))
 	var requests []providers.Request
-	app.WithSessionLLMs(scriptedLLMs(&requests,
+	app.SetSessionLLMs(scriptedLLMs(&requests,
 		todoWriteCall("call_child", `[{"content":"Scan the repo","status":"completed"}]`),
 		providers.Response{Text: "Scanned."},
 	))
@@ -163,7 +167,7 @@ func TestContextNoteLeavesOutAFinishedListOfAnEarlierChain(t *testing.T) {
 	noted := func(suffix string, items []todo.Item) bool {
 		t.Helper()
 		var requests []providers.Request
-		app.WithSessionLLMs(scriptedLLMs(&requests, providers.Response{Text: "Paris."}))
+		app.SetSessionLLMs(scriptedLLMs(&requests, providers.Response{Text: "Paris."}))
 		session, run := saveCrashRecoveryRun(t, db, suffix, core.RunStatusAccepted, false)
 		if err := db.SaveSessionTodo(ctx, todo.List{SessionID: session.ID, Items: items, ChainRunID: "run_earlier", UpdatedRunID: "run_earlier"}); err != nil {
 			t.Fatal(err)
@@ -184,5 +188,38 @@ func TestContextNoteLeavesOutAFinishedListOfAnEarlierChain(t *testing.T) {
 	}
 	if !noted("open_list", []todo.Item{{Content: "Fix the bug", Status: todo.Pending}}) {
 		t.Fatal("an earlier chain's open list is missing from the context note")
+	}
+}
+
+// failingMemory fails to read memory once broken.
+type failingMemory struct {
+	*memory.Service
+	broken bool
+}
+
+func (m *failingMemory) PromptContext(ctx context.Context, workingDir string) (string, error) {
+	if m.broken {
+		return "", errors.New("memory unreadable")
+	}
+	return m.Service.PromptContext(ctx, workingDir)
+}
+
+func TestUnreadableMemoryIsNotReportedAsRemoved(t *testing.T) {
+	t.Parallel()
+	db, cleanup := newCrashRecoveryStore(t)
+	defer cleanup()
+	memories := &failingMemory{Service: memory.New(db, nil)}
+	app := core.New(core.Config{Store: db, Memory: memories})
+	if _, err := memories.Create(context.Background(), memory.Entry{Content: "prefers tabs"}); err != nil {
+		t.Fatal(err)
+	}
+
+	requests := twoStepRun(t, app, db, "memory_broken", func(context.Context, string) error {
+		memories.broken = true
+		return nil
+	})
+
+	if last := requests[1].Messages[len(requests[1].Messages)-1]; strings.Contains(last.Content, "Memory changed") {
+		t.Fatalf("second request ends with %+v", last)
 	}
 }

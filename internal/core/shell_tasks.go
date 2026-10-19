@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/sandbox"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
@@ -33,13 +34,6 @@ const foregroundWaitDelay = 2 * time.Second
 // DefaultBackgroundTasks is how many background commands a session runs at
 // once unless the daemon configures another limit.
 const DefaultBackgroundTasks = 8
-
-// WithCommandEnvironment sets the environment of shell commands, read for
-// every command.
-func (c *Core) WithCommandEnvironment(env func() []string) *Core {
-	c.commandEnv = env
-	return c
-}
 
 // RunCommand runs a bash call's command. A background command, or a foreground
 // one still running after its AutoBackground delay, goes on as a task of the
@@ -517,7 +511,7 @@ func (c *Core) taskOutputPath(sessionID string, taskID string) (string, error) {
 }
 
 func (c *Core) publishTaskUpdated(task Task) {
-	c.publishEvent(Event{Type: EventTaskUpdated, SessionID: task.SessionID, RunID: task.RunID, Payload: task})
+	c.publishEvent(events.Event{Type: EventTaskUpdated, SessionID: task.SessionID, RunID: task.RunID, Payload: task})
 }
 
 func taskInfo(task Task) tools.TaskInfo {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/permission"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/store"
@@ -48,11 +49,11 @@ type windowLLMs struct {
 
 func (w windowLLMs) ContextWindow(string, string) int { return w.window }
 
-func drainEvents(events <-chan core.Event) []core.Event {
-	var out []core.Event
+func drainEvents(stream <-chan events.Event) []events.Event {
+	var out []events.Event
 	for {
 		select {
-		case event, ok := <-events:
+		case event, ok := <-stream:
 			if !ok {
 				return out
 			}
@@ -63,7 +64,7 @@ func drainEvents(events <-chan core.Event) []core.Event {
 	}
 }
 
-func describeEvent(event core.Event) string {
+func describeEvent(event events.Event) string {
 	switch payload := event.Payload.(type) {
 	case transcript.Message:
 		kinds := make([]string, 0, len(payload.Parts))
@@ -95,14 +96,14 @@ func sessionMessages(t *testing.T, db *store.SQLiteStore, sessionID string) []tr
 
 func TestNativeToolRoundPublishesEventsInOrder(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	now := runRecoveryTestTime()
-	app.WithClock(func() time.Time { return now })
-	app.WithTools(tools.NewRegistry(&recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}))
+	app := core.New(core.Config{Store: db, Clock: func() time.Time { return now }})
+	app.SetTools(tools.NewRegistry(&recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}))
 	usage := providers.Usage{PromptTokens: 3, OutputTokens: 1}
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			if err := providers.StreamText(ctx, "Checking"); err != nil {
@@ -118,14 +119,14 @@ func TestNativeToolRoundPublishesEventsInOrder(t *testing.T) {
 	session, run := saveCrashRecoveryRun(t, db, "events", core.RunStatusAccepted, false)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	events := app.SubscribeEvents(ctx, session.ID)
+	stream := app.SubscribeEvents(ctx, session.ID, 0)
 
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
 	}
 
 	var trace []string
-	for _, event := range drainEvents(events) {
+	for _, event := range drainEvents(stream) {
 		switch event.Type {
 		case core.EventRunUpdated, core.EventMessageCreated, core.EventMessageUpdated, core.EventToolUpdated:
 			trace = append(trace, describeEvent(event))
@@ -168,12 +169,12 @@ func TestNativeRunCheckpointsModelAndToolBatchPhases(t *testing.T) {
 		}
 		seen = append(seen, label+":"+calls)
 	}
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		record("tool")
 		return tools.Result{Content: "inspected"}, nil
 	}}))
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		calls++
 		record(fmt.Sprintf("model%d", calls))
 		if calls == 1 {
@@ -200,8 +201,8 @@ func TestParkedRunKeepsTheEngineCheckpoint(t *testing.T) {
 	defer cleanup()
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(mutate))
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetTools(tools.NewRegistry(mutate))
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil
 	})})
 	_, run := saveCrashRecoveryRun(t, db, "parked_checkpoint", core.RunStatusAccepted, false)
@@ -230,16 +231,16 @@ func approvalTools(mutations *int) (funcTool, *recoveryTool) {
 
 func TestNativeRunHoldsLaterCallsBehindAnApprovalBarrier(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	starter := &recordingRunStarter{}
+	app := core.New(core.Config{Store: db, RunStarter: starter})
 	mutations := 0
 	mutate, inspect := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(mutate, inspect))
-	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app.SetTools(tools.NewRegistry(mutate, inspect))
 	calls := 0
 	var resumedWithBothResults bool
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{
@@ -288,16 +289,16 @@ func TestNativeRunHoldsLaterCallsBehindAnApprovalBarrier(t *testing.T) {
 
 func TestDeniedApprovalReturnsTheReasonToTheModel(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	starter := &recordingRunStarter{}
+	app := core.New(core.Config{Store: db, RunStarter: starter})
 	mutations := 0
 	mutate, inspect := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(mutate, inspect))
-	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app.SetTools(tools.NewRegistry(mutate, inspect))
 	calls := 0
 	var denial string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-mutate", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil
@@ -342,13 +343,13 @@ func askingReadTool(id string) funcTool {
 
 func TestRunResumesOnceEveryApprovalIsDecided(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(askingReadTool("read_a"), askingReadTool("read_b")))
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: db, RunStarter: starter})
+	app.SetTools(tools.NewRegistry(askingReadTool("read_a"), askingReadTool("read_b")))
 	var results []string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if len(results) == 0 && toolResultContent(request, "call-a") == "" {
 			return providers.Response{ToolCalls: []providers.ToolCall{
 				{ID: "call-a", Name: "read_a", Arguments: []byte(`{}`)},
@@ -416,12 +417,11 @@ func TestApprovalDecidedWhileTheRunParksResumesIt(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	parking := &parkingStore{SQLiteStore: db}
-	app := core.New(parking)
-	app.WithTools(tools.NewRegistry(askingReadTool("read_a")))
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: parking, RunStarter: starter})
+	app.SetTools(tools.NewRegistry(askingReadTool("read_a")))
 	var result string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if result = toolResultContent(request, "call-a"); result == "" {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-a", Name: "read_a", Arguments: []byte(`{}`)}}}, nil
 		}
@@ -462,7 +462,7 @@ func TestDeniedCallOutsideARunGetsTheDenialAsItsResult(t *testing.T) {
 	defer cleanup()
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(mutate))
+	app.SetTools(tools.NewRegistry(mutate))
 	session, _ := saveCrashRecoveryRun(t, db, "runless", core.RunStatusCompleted, false)
 	pending, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: session.ID, ToolName: "mutate_state", ToolCallID: "call-api", Args: []byte(`{}`)})
 	if err != nil || pending.Approval == nil {
@@ -490,7 +490,7 @@ func TestDenialReasonIsCappedAt2000Characters(t *testing.T) {
 	defer cleanup()
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(mutate))
+	app.SetTools(tools.NewRegistry(mutate))
 	session, _ := saveCrashRecoveryRun(t, db, "long-reason", core.RunStatusCompleted, false)
 	pending, err := app.ExecuteTool(context.Background(), core.ExecuteToolInput{SessionID: session.ID, ToolName: "mutate_state", ToolCallID: "call-api", Args: []byte(`{}`)})
 	if err != nil || pending.Approval == nil {
@@ -522,7 +522,7 @@ func TestSteerDuringToolIsAppendedToThatToolResult(t *testing.T) {
 	defer cleanup()
 	started := make(chan struct{})
 	release := make(chan struct{})
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
 		close(started)
 		select {
 		case <-release:
@@ -533,7 +533,7 @@ func TestSteerDuringToolIsAppendedToThatToolResult(t *testing.T) {
 	}}))
 	calls := 0
 	var sawGuidance bool
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
@@ -592,25 +592,24 @@ func (s cancelOnToolResultStore) AppendMessage(ctx context.Context, message tran
 
 func TestSteerIsRequeuedWhenCancelStopsItsToolResultWrite(t *testing.T) {
 	t.Parallel()
-	_, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	session, run := saveCrashRecoveryRun(t, db, "steer_cancel", core.RunStatusAccepted, false)
+	starter := &recordingRunStarter{}
 	var app *core.Core
-	app = core.New(cancelOnToolResultStore{SQLiteStore: db, onToolResult: func() {
+	app = core.New(core.Config{Store: cancelOnToolResultStore{SQLiteStore: db, onToolResult: func() {
 		if _, err := app.CancelRun(context.Background(), run.ID); err != nil {
 			t.Error(err)
 		}
-	}})
-	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	}}, RunStarter: starter})
 	started := make(chan struct{})
 	release := make(chan struct{})
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		close(started)
 		<-release
 		return tools.Result{Content: "inspected"}, nil
 	}}))
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
 	})})
 	done := make(chan error, 1)
@@ -648,13 +647,13 @@ func TestCancelDuringToolStopsRunWithoutAnotherModelCall(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	started := make(chan struct{})
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(ctx context.Context, _ tools.Call) (tools.Result, error) {
 		close(started)
 		<-ctx.Done()
 		return tools.Result{}, ctx.Err()
 	}}))
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		calls++
 		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-1", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
 	})})
@@ -742,7 +741,7 @@ func TestNativeRunCompactsLargeHistoryBeforeTheModelCall(t *testing.T) {
 	var summaryRequests, mainRequests int
 	var mainPrompt, mainFirst string
 	var leaked bool
-	app.WithSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
 			summaryRequests++
 			return providers.Response{Text: "SUMMARY"}, nil
@@ -779,7 +778,7 @@ func TestContextLengthErrorForcesCompactionAndRetriesOnce(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var summaryRequests, mainRequests int
-	app.WithSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(windowLLMs{window: 100_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
 			summaryRequests++
 			return providers.Response{Text: "SUMMARY"}, nil
@@ -813,7 +812,7 @@ func TestNativeRunSeesOnlyTheNewestBoundaryAndLaterMessages(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	var seen providers.Request
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		seen = request
 		return providers.Response{Text: "Done."}, nil
 	})})
@@ -843,10 +842,10 @@ func TestBlockingSubagentReturnsChildSummaryToParent(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	parentCalls := 0
 	var delegateResult string
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			return providers.Response{Text: "child found 3 files"}, nil
 		}
@@ -885,9 +884,9 @@ func TestSubagentSummaryJoinsAReplyCutByTheOutputLimit(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	parentCalls, childCalls := 0, 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			childCalls++
 			if childCalls == 1 {
@@ -920,7 +919,7 @@ type asyncSubagentScenario struct {
 	db      *store.SQLiteStore
 	session core.Session
 	run     core.Run
-	events  []core.Event
+	events  []events.Event
 }
 
 // runAsyncSubagentScenario lets a parent start a background subagent and end
@@ -929,11 +928,11 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 	t.Helper()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	t.Cleanup(cleanup)
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	var mu sync.Mutex
 	spawned := false
 	parentEnded := make(chan struct{})
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			select {
 			case <-parentEnded:
@@ -958,7 +957,7 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 	session, run := saveCrashRecoveryRun(t, db, "async", core.RunStatusAccepted, false)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	events := app.SubscribeEvents(ctx, session.ID)
+	stream := app.SubscribeEvents(ctx, session.ID, 0)
 
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
@@ -966,17 +965,17 @@ func runAsyncSubagentScenario(t *testing.T) asyncSubagentScenario {
 	assertRecoveryRunStatus(t, db, run.ID, core.RunStatusCompleted)
 	close(parentEnded)
 
-	var seen []core.Event
+	var seen []events.Event
 	timeout := time.After(30 * time.Second)
 	for {
 		select {
-		case event, ok := <-events:
+		case event, ok := <-stream:
 			if !ok {
 				t.Fatal("the event stream closed")
 			}
 			seen = append(seen, event)
 			if wake, ok := event.Payload.(core.Run); ok && event.Type == core.EventRunUpdated && wake.Trigger == core.RunTriggerWake && wake.Status == core.RunStatusCompleted {
-				return asyncSubagentScenario{db: db, session: session, run: run, events: append(seen, drainEvents(events)...)}
+				return asyncSubagentScenario{db: db, session: session, run: run, events: append(seen, drainEvents(stream)...)}
 			}
 		case <-timeout:
 			t.Fatal("subagent completion follow-up run did not complete")
@@ -1001,7 +1000,7 @@ func TestContextOverflowWithNothingToSummariseFailsAsContextExhausted(t *testing
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{}, errors.New("provider: context_length_exceeded")
 	})})
 	_, run := saveCrashRecoveryRun(t, db, "exhausted", core.RunStatusAccepted, false)
@@ -1038,9 +1037,8 @@ func TestACancelWhileTheEngineFinishesStands(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	app := core.New(&cancelingStore{SQLiteStore: db})
-	app.WithRunStarter(&recordingRunStarter{})
-	app.WithSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "Done."}})
+	app := core.New(core.Config{Store: &cancelingStore{SQLiteStore: db}, RunStarter: &recordingRunStarter{}})
+	app.SetSessionLLMs(recoveryLLMs{runtime: &recoveryRuntime{text: "Done."}})
 	session, run := saveCrashRecoveryRun(t, db, "cancel-at-end", core.RunStatusAccepted, false)
 
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
@@ -1061,16 +1059,16 @@ func TestACancelWhileTheEngineFinishesStands(t *testing.T) {
 
 func TestAPreviewSeesTheWritesOfEarlierCallsInItsBatch(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "a.txt")
-	app.WithTools(tools.NewRegistry(tools.CoreExecutors()...))
-	app.WithRunStarter(&recordingRunStarter{})
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetTools(tools.NewRegistry(tools.CoreExecutors()...))
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{ToolCalls: []providers.ToolCall{
 			{ID: "call-write", Name: "write", Arguments: []byte(`{"file_path":"` + path + `","content":"one\n"}`)},
 			{ID: "call-edit", Name: "edit", Arguments: []byte(`{"file_path":"` + path + `","old_string":"one","new_string":"two"}`)},
@@ -1101,7 +1099,7 @@ func TestARunlessCallApprovedByClientsAtOnceRunsOnce(t *testing.T) {
 	defer cleanup()
 	var mu sync.Mutex
 	runs := 0
-	app.WithTools(tools.NewRegistry(funcTool{ask: "write?", spec: recoveryToolSpec("write_state", tools.EffectMutation), fn: func(context.Context, tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{ask: "write?", spec: recoveryToolSpec("write_state", tools.EffectMutation), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		mu.Lock()
 		runs++
 		mu.Unlock()

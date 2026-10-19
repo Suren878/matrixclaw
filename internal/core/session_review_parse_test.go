@@ -3,6 +3,8 @@ package core
 import (
 	"strings"
 	"testing"
+
+	"github.com/Suren878/matrixclaw/internal/memory"
 )
 
 func TestParseSessionReviewKeepsValidItemsOnly(t *testing.T) {
@@ -44,8 +46,8 @@ func TestParseSessionReviewKeepsValidItemsOnly(t *testing.T) {
 		}
 	}
 	if len(review.Memories) != 2 ||
-		review.Memories[0] != (MemoryEntry{Scope: MemoryScopeUser, Content: "The user prefers pnpm over npm."}) ||
-		review.Memories[1] != (MemoryEntry{Scope: MemoryScopeProject, Content: "Tests need the docker daemon.", WorkingDir: "/work/app"}) {
+		review.Memories[0] != (memory.Entry{Scope: memory.ScopeUser, Content: "The user prefers pnpm over npm."}) ||
+		review.Memories[1] != (memory.Entry{Scope: memory.ScopeProject, Content: "Tests need the docker daemon.", WorkingDir: "/work/app"}) {
 		t.Fatalf("memories = %+v", review.Memories)
 	}
 }
@@ -60,7 +62,7 @@ func TestParseSessionReviewRejectsReplyWithoutJSON(t *testing.T) {
 
 func TestParseSessionReviewKeepsProjectMemoryOfASessionWithoutDirectoryAsUser(t *testing.T) {
 	review, err := parseSessionReview(`{"memories":[{"scope":"project","content":"Use make."}]}`, nil, "")
-	if err != nil || len(review.Memories) != 1 || review.Memories[0].Scope != MemoryScopeUser || review.Memories[0].WorkingDir != "" {
+	if err != nil || len(review.Memories) != 1 || review.Memories[0].Scope != memory.ScopeUser || review.Memories[0].WorkingDir != "" {
 		t.Fatalf("review = %+v err = %v", review, err)
 	}
 }

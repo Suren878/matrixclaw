@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
@@ -52,8 +54,8 @@ func (c *Core) transition(ctx context.Context, run *Run, change runChange) error
 	from := run.Status
 	if change.To.Terminal() {
 		// Callers waiting for the end wait for its follow-up too.
-		c.beginRunEnd(run.ID)
-		defer c.endRunEnd(run.ID)
+		c.runEnds.begin(run.ID)
+		defer c.runEnds.end(run.ID)
 	}
 	reply, created, err := c.commitRun(ctx, run, change)
 	if err != nil {
@@ -120,9 +122,9 @@ func (c *Core) afterCommit(ctx context.Context, run Run, from RunStatus, change 
 		}
 	}
 	if reply != nil {
-		c.publishEvent(Event{Type: replyEvent(created), SessionID: reply.SessionID, RunID: reply.RunID, Payload: *reply})
+		c.publishEvent(events.Event{Type: replyEvent(created), SessionID: reply.SessionID, RunID: reply.RunID, Payload: *reply})
 	}
-	c.publishEvent(Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: run})
+	c.publishEvent(events.Event{Type: EventRunUpdated, SessionID: run.SessionID, RunID: run.ID, Payload: run})
 	if ended {
 		if err := c.store.DeleteRunCheckpoint(ctx, run.ID); err != nil {
 			errs = append(errs, fmt.Errorf("clear the checkpoint: %w", err))
@@ -164,7 +166,7 @@ func (c *Core) stampReply(reply *transcript.Message, saved bool, now time.Time) 
 	return reply, !saved
 }
 
-func replyEvent(created bool) EventType {
+func replyEvent(created bool) events.Type {
 	if created {
 		return EventMessageCreated
 	}
@@ -184,7 +186,7 @@ func (c *Core) sealReply(ctx context.Context, reply *transcript.Message, saved b
 	if err != nil {
 		return err
 	}
-	c.publishEvent(Event{Type: replyEvent(created), SessionID: reply.SessionID, RunID: reply.RunID, Payload: *reply})
+	c.publishEvent(events.Event{Type: replyEvent(created), SessionID: reply.SessionID, RunID: reply.RunID, Payload: *reply})
 	return nil
 }
 
@@ -364,4 +366,85 @@ func (c *Core) afterEnd(ctx context.Context, run Run) error {
 	}
 	c.reviewIdleSession(session.ID)
 	return nil
+}
+
+// waitRunEnd returns once the run has ended and what follows its end (its
+// subagent task's end among them) is done, or with ctx's error.
+func (c *Core) waitRunEnd(ctx context.Context, runID string) error {
+	return c.runEnds.wait(ctx, runID, func(ctx context.Context) (bool, error) {
+		run, err := c.store.GetRun(ctx, runID)
+		return run.Status.Terminal(), err
+	})
+}
+
+// runEnds keeps the callers waiting for each run to end and counts each
+// run's ending transitions not followed up yet.
+type runEnds struct {
+	mu      sync.Mutex
+	waiters map[string][]chan struct{}
+	ending  map[string]int
+}
+
+// begin counts a transition that may end the run until end.
+func (e *runEnds) begin(runID string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ending == nil {
+		e.ending = map[string]int{}
+	}
+	e.ending[runID]++
+}
+
+// end ends what begin counted and, once no ending of the run is in progress,
+// wakes its waiters to look again.
+func (e *runEnds) end(runID string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ending[runID]--; e.ending[runID] > 0 {
+		return
+	}
+	delete(e.ending, runID)
+	for _, woken := range e.waiters[runID] {
+		close(woken)
+	}
+	delete(e.waiters, runID)
+}
+
+// wait returns once ended reports the run ended and no ending of it is in
+// progress, with ended's error, or with ctx's error.
+func (e *runEnds) wait(ctx context.Context, runID string, ended func(context.Context) (bool, error)) error {
+	for {
+		woken := make(chan struct{})
+		e.mu.Lock()
+		if e.waiters == nil {
+			e.waiters = map[string][]chan struct{}{}
+		}
+		e.waiters[runID] = append(e.waiters[runID], woken)
+		e.mu.Unlock()
+		done, err := ended(ctx)
+		e.mu.Lock()
+		done = err != nil || done && e.ending[runID] == 0
+		e.mu.Unlock()
+		if done {
+			e.forget(runID, woken)
+			return err
+		}
+		select {
+		case <-woken:
+		case <-ctx.Done():
+			e.forget(runID, woken)
+			return ctx.Err()
+		}
+	}
+}
+
+func (e *runEnds) forget(runID string, woken chan struct{}) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	waiters := slices.DeleteFunc(e.waiters[runID], func(ch chan struct{}) bool { return ch == woken })
+	if len(waiters) == 0 {
+		delete(e.waiters, runID)
+		return
+	}
+	e.waiters[runID] = waiters
 }

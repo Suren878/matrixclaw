@@ -23,19 +23,18 @@ import (
 func TestLongNativeRunCompactsKeepsLargeOutputsAndCompletes(t *testing.T) {
 	t.Parallel()
 	const steps = 120
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	now := runRecoveryTestTime()
-	app.WithClock(func() time.Time { return now })
+	files := t.TempDir()
+	app := core.New(core.Config{Store: db, Clock: func() time.Time { return now }, SessionFiles: files})
 	defaults := core.DefaultRunBudgets()
 	app.SetTuning(core.Tuning{Budgets: core.RunBudgets{User: agent.Budget{Steps: steps + 10}, Subagent: defaults.Subagent, Automation: defaults.Automation}})
-	files := t.TempDir()
-	app.WithSessionFiles(files)
 	// Outputs grow to ~6k tokens; every 40th is ~15k tokens and goes to a file.
 	// Each step also says ~300 tokens, which elision cannot hide, so the history
 	// still needs summaries.
 	outputs := map[int]string{}
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("probe", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("probe", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		n := len(outputs) + 1
 		size := min(300*n, 24_000)
 		if n%40 == 0 {
@@ -47,7 +46,7 @@ func TestLongNativeRunCompactsKeepsLargeOutputsAndCompletes(t *testing.T) {
 	limit := agentcontext.EffectiveWindow(60_000, int(providers.DefaultMaxOutputTokens))
 	var mainRequests, summaries, largest int
 	var problems []string
-	app.WithSessionLLMs(windowLLMs{window: 60_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(windowLLMs{window: 60_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		tokens := agentcontext.EstimateRequestTokens(request)
 		largest = max(largest, tokens)
 		usage := providers.Usage{PromptTokens: int64(tokens), OutputTokens: 10}

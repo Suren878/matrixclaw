@@ -41,16 +41,15 @@ func newAskingChild(t *testing.T, lead ...providers.ToolCall) *askingChild {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	parking := &parkingStore{SQLiteStore: db}
-	app := core.New(parking)
-	b := &askingChild{app: app, db: db, parking: parking, starter: &executingRunStarter{app: app}}
-	app.WithRunStarter(b.starter)
+	app, starter := executingCore(core.Config{Store: parking})
+	b := &askingChild{app: app, db: db, parking: parking, starter: starter}
 	mutate := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), ask: "write the state", fn: func(context.Context, tools.Call) (tools.Result, error) {
 		b.mutations.Add(1)
 		return tools.Result{Content: "mutated"}, nil
 	}}
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate, askingReadTool("ask_read"))...))
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate, askingReadTool("ask_read"))...))
 	childCalls, parentCalls := 0, 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
@@ -374,16 +373,14 @@ func waitPendingApproval(t *testing.T, db *store.SQLiteStore, sessionID string, 
 func TestParentAwaitingABackgroundChildWakesAfterTheChildsApproval(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	app := core.New(db)
-	starter := &executingRunStarter{app: app}
-	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
+	app, starter := executingCore(core.Config{Store: db, SessionFiles: t.TempDir()})
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(append(append(core.AgentToolExecutors(app), core.AwaitToolExecutors(app)...), mutate)...))
+	app.SetTools(tools.NewRegistry(append(append(core.AgentToolExecutors(app), core.AwaitToolExecutors(app)...), mutate)...))
 	var mu sync.Mutex
 	parked := make(chan struct{})
 	childCalls, parentCalls := 0, 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			<-parked
 			mu.Lock()
@@ -431,15 +428,13 @@ func TestParentAwaitingABackgroundChildWakesAfterTheChildsApproval(t *testing.T)
 func TestStoppingABackgroundChildParkedOnApprovalEndsIt(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	app := core.New(db)
-	starter := &executingRunStarter{app: app}
-	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
+	app, starter := executingCore(core.Config{Store: db, SessionFiles: t.TempDir()})
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(append(append(core.AgentToolExecutors(app), core.AwaitToolExecutors(app)...), mutate)...))
+	app.SetTools(tools.NewRegistry(append(append(core.AgentToolExecutors(app), core.AwaitToolExecutors(app)...), mutate)...))
 	var mu sync.Mutex
 	parentCalls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-child-mutate", Name: "mutate_state", Arguments: []byte(`{}`)}}}, nil
 		}
@@ -486,16 +481,14 @@ func TestStoppingABackgroundChildParkedOnApprovalEndsIt(t *testing.T) {
 func TestBackgroundChildsApprovalGoesToTheChatTheSessionAnswersIn(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	app := core.New(db)
-	starter := &executingRunStarter{app: app}
-	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
+	app, starter := executingCore(core.Config{Store: db, SessionFiles: t.TempDir()})
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate)...))
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), mutate)...))
 	var mu sync.Mutex
 	parentCalls := 0
 	parentDone := make(chan struct{})
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			<-parentDone
 			if toolResultContent(request, "call-child-mutate") != "" {

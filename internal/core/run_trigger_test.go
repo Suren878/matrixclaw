@@ -10,9 +10,9 @@ import (
 
 func TestTriggeredRunsAreMarkedAsAutomation(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	app.WithRunStarter(&recordingRunStarter{})
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	session, _ := saveCrashRecoveryRun(t, db, "trigger", core.RunStatusCompleted, false)
 
 	result, err := app.AcceptTriggeredRun(context.Background(), core.HandleTriggeredRunInput{TriggerID: "job-1", SessionID: session.ID, Text: "scheduled check"})
@@ -28,10 +28,10 @@ func TestTriggeredRunsAreMarkedAsAutomation(t *testing.T) {
 
 func TestTriggerIntoABusySessionIsSkipped(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	starter := &recordingRunStarter{}
-	app.WithRunStarter(starter)
+	app := core.New(core.Config{Store: db, RunStarter: starter})
 	session, _ := saveCrashRecoveryRun(t, db, "trigger-busy", core.RunStatusRunning, false)
 
 	_, err := app.AcceptTriggeredRun(context.Background(), core.HandleTriggeredRunInput{TriggerID: "fire-1", SessionID: session.ID, Text: "scheduled check"})

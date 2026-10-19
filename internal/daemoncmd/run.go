@@ -17,6 +17,7 @@ import (
 	"github.com/Suren878/matrixclaw/internal/externalagents/builtins"
 	"github.com/Suren878/matrixclaw/internal/hooks"
 	"github.com/Suren878/matrixclaw/internal/lsp"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
@@ -67,34 +68,54 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
-	app := core.New(sqliteStore).
-		WithSessionLLMs(bootstrap.SessionLLMs).
-		WithSessionFiles(sessionFilesRoot(bootstrap.DBPath)).
-		WithAttachmentReader(storageAttachmentReader{store: storageModule.Store()}).
-		WithSkillsContext(skillsModule).
-		WithSkillLearning(skillsModule).
-		WithPromptEnvironment(promptEnvironment(bootstrap)).
-		WithWorktrees(filepath.Join(dataDir(bootstrap.DBPath), "worktrees"))
-	if bootstrap.Setup.Daemon.Checkpoints.On() {
-		app.WithCheckpoints(checkpoint.New(filepath.Join(dataDir(bootstrap.DBPath), "checkpoints")))
-	}
 	externalRegistry, externalRuntimes, err := builtins.BuildRegistry(bootstrap.Setup.Modules)
 	if err != nil {
 		return err
 	}
-	app.WithExternalAgents(externalRegistry, sqliteStore)
-	automationService := automation.NewService(automation.NewSQLiteStore(sqliteStore.DB()), app)
-	osmGeo := geo.NewOSMServiceFromEnv()
-	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
-	// Commands and language servers follow the setup the supervisor applies;
-	// it is built after the modules, which offer the lsp tool.
+	// Commands, language servers and hooks follow the setup the supervisor
+	// applies; it is built on the core.
 	var appliedConfig func() setup.Config
 	commandEnv := commandEnvironment(bootstrap.Setup, func() setup.Config { return appliedConfig() })
 	servers := lsp.NewManager(filepath.Join(dataDir(bootstrap.DBPath), "lsp"), commandEnv, func() lsp.Config {
 		return appliedConfig().Diagnostics.LSP
 	})
+	// The agent's file tools may not trust a project's hooks for the owner.
+	hooksTrust := filepath.Join(dataDir(bootstrap.DBPath), "hooks-trust.json")
+	tools.ProtectCredentials(func() []string { return []string{hooksTrust} })
+	var checkpoints *checkpoint.Store
+	if bootstrap.Setup.Daemon.Checkpoints.On() {
+		checkpoints = checkpoint.New(filepath.Join(dataDir(bootstrap.DBPath), "checkpoints"))
+	}
+	lifetime, stopLifetime := context.WithCancel(ctx)
+	defer stopLifetime()
+	memories := memory.New(sqliteStore, nil)
+	app := core.New(core.Config{
+		Store:              sqliteStore,
+		Lifetime:           lifetime,
+		Attachments:        storageAttachmentReader{store: storageModule.Store()},
+		ExternalAgents:     externalRegistry,
+		ExternalAgentStore: sqliteStore,
+		SkillsContext:      skillsModule,
+		Memory:             memories,
+		SkillLearning:      skillsModule,
+		PromptEnvironment:  promptEnvironment(bootstrap),
+		SessionFiles:       sessionFilesRoot(bootstrap.DBPath),
+		Worktrees:          filepath.Join(dataDir(bootstrap.DBPath), "worktrees"),
+		Checkpoints:        checkpoints,
+		CommandEnvironment: commandEnv,
+		Sandbox:            func() sandbox.Settings { return appliedConfig().Daemon.Sandbox },
+		Hooks: hooks.NewRunner(commandEnv, func() hooks.Config {
+			cfg := appliedConfig()
+			return hooks.Config{Hooks: cfg.Hooks, Diagnostics: cfg.Diagnostics}
+		}, hooksTrust, servers),
+		LSPAvailable: servers.Available,
+	})
+	automationService := automation.NewService(automation.NewSQLiteStore(sqliteStore.DB()), app)
+	osmGeo := geo.NewOSMServiceFromEnv()
+	realtimeVoice := realtime.NewManager(app, geminilive.Spec, grokvoice.Spec, openairealtime.Spec)
 	daemon, err := buildModules(moduleDeps{
 		app:        app,
+		memory:     memories,
 		automation: automationService,
 		runtime:    localRuntime,
 		storage:    storageModule,
@@ -106,12 +127,10 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	app.WithTools(daemon.set)
-	lifetime, stopLifetime := context.WithCancel(ctx)
-	defer stopLifetime()
-	app.WithLifetime(lifetime)
+	app.SetTools(daemon.set)
 	supervisor := newSupervisor(ctx, app, automationService, osmGeo, daemon.set)
 	appliedConfig = supervisor.appliedConfig
+	app.SetRuntimeStatusContext(supervisor)
 	server := api.New(api.Deps{
 		Core:       app,
 		Automation: automationService,
@@ -119,23 +138,13 @@ func Run(ctx context.Context) error {
 		Realtime:   realtimeVoice,
 		Modules:    daemon.api,
 		Skills:     skillsModule.Service(),
+		Memory:     memories,
 		Setup:      bootstrap.SetupService,
 		Reload:     supervisor.Reload,
 		Restart:    supervisor.RestartDaemon,
 		Stop:       supervisor.StopDaemon,
 		APIToken:   bootstrap.APIToken,
 	})
-	app.WithRuntimeStatusContext(supervisor)
-	app.WithCommandEnvironment(commandEnv)
-	app.WithSandbox(func() sandbox.Settings { return supervisor.appliedConfig().Daemon.Sandbox })
-	// The agent's file tools may not trust a project's hooks for the owner.
-	hooksTrust := filepath.Join(dataDir(bootstrap.DBPath), "hooks-trust.json")
-	tools.ProtectCredentials(func() []string { return []string{hooksTrust} })
-	app.WithHooks(hooks.NewRunner(commandEnv, func() hooks.Config {
-		cfg := supervisor.appliedConfig()
-		return hooks.Config{Hooks: cfg.Hooks, Diagnostics: cfg.Diagnostics}
-	}, hooksTrust, servers))
-	app.WithLSP(servers.Available)
 	supervisor.SetExternalAgents(sqliteStore, externalRuntimes, bootstrap.Setup.Modules.ExternalAgents)
 	defer func() {
 		// Ending the lifetime interrupts the executing runs and keeps them for

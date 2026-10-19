@@ -35,9 +35,11 @@ flowchart LR
 | `internal/api` | HTTP API: one route table, auth, roles |
 | `internal/daemonclient` | Go client of the API, used by every Go client |
 | `internal/controlplane` | slash commands and screens for the terminal and Telegram |
-| `internal/core` | sessions, messages, runs, approvals, tasks, subagents, deliveries, memory, external-agent runs; the engine's port adapters |
+| `internal/core` | sessions, messages, runs, approvals, tasks, subagents, deliveries, external-agent runs; the engine's port adapters |
+| `internal/memory` | persistent memory entries and suggestions, the prompt's memory section and the `memory` tool |
 | `internal/agent` | the native agent engine (below) |
 | `internal/transcript` | message, part, finish and origin types shared by core, store, api and agent |
+| `internal/events` | the live event bus: numbered events, per-session fan-out, the replay ring |
 | `internal/tools` | tool contract and the built-in file, shell and task tools |
 | `internal/checkpoint` | file checkpoints: shadow git snapshots of working directories, diff, restore (see [CHECKPOINTS.md](CHECKPOINTS.md)) |
 | `internal/permission` | permission rules, subjects, bash parsing, mode presets |
@@ -112,7 +114,7 @@ servers and closes external agents and modules.
   `run.updated`, `tool.updated`, `approval.requested|resolved`,
   `input.updated`, `task.updated`, `todo.updated`, `goal.updated`, `context.updated` (context
   size the engine measured after each step). Replay with `?after=` covers only
-  a 256-event ring shared by all sessions.
+  a 256-event ring shared by all sessions (the bus is `internal/events`).
 - Each subscriber gets events in ID order. One that falls 512 events behind
   is closed, never skipped silently; its client reconnects and reloads. An
   event that cannot be encoded is logged and ends the stream the same way. An
@@ -552,7 +554,7 @@ provider and model.
 - `lsp {operation, file_path, line, character, query}` asks the language
   server for definition, references, implementation, hover and symbols. It
   is read-only, covered by `read` rules, and offered only when a server
-  would serve the session's working directory (`core.WithLSP`).
+  would serve the session's working directory (`core.Config.LSPAvailable`).
 
 ### File checkpoints
 
@@ -657,7 +659,7 @@ Close() error
   call over its conversation tail (`agentcontext.TranscriptTail`, the summary
   rendering); proposed skills become quarantined drafts through
   `core.SkillLearning` (the skills module), proposed memory becomes pending
-  `memories` rows that runs do not see until the owner approves them on
+  `memories` rows (through `core.Memory`, the `internal/memory` service) that runs do not see until the owner approves them on
   `/memory pending`. No run, no gate; the call takes a model slot, counts in
   `executing` (shutdown cancels and waits for it) and is recorded as a
   `run_steps` row with stop reason `review` on the session's latest run. See

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -45,7 +46,7 @@ func (c *Core) CommitRealtimeVoiceTurn(ctx context.Context, input CommitRealtime
 		if _, err := c.store.AppendMessage(ctx, message); err != nil {
 			return CommitRealtimeVoiceTurnResult{}, err
 		}
-		c.publishEvent(Event{Type: EventMessageCreated, SessionID: sessionID, Payload: message})
+		c.publishEvent(events.Event{Type: EventMessageCreated, SessionID: sessionID, Payload: message})
 		result.UserMessage = &message
 	}
 	if assistantTranscript != "" {
@@ -57,7 +58,7 @@ func (c *Core) CommitRealtimeVoiceTurn(ctx context.Context, input CommitRealtime
 		if _, err := c.store.AppendMessage(ctx, message); err != nil {
 			return CommitRealtimeVoiceTurnResult{}, err
 		}
-		c.publishEvent(Event{Type: EventMessageCreated, SessionID: sessionID, Payload: message})
+		c.publishEvent(events.Event{Type: EventMessageCreated, SessionID: sessionID, Payload: message})
 		result.AssistantMessage = &message
 	}
 

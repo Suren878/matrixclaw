@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/modules"
 	localstorage "github.com/Suren878/matrixclaw/internal/modules/storage"
 	voicemodule "github.com/Suren878/matrixclaw/internal/modules/voice"
@@ -107,6 +108,7 @@ var errorStatuses = []struct {
 	status int
 }{
 	{core.ErrInvalidInput, http.StatusBadRequest},
+	{memory.ErrInvalidInput, http.StatusBadRequest},
 	{core.ErrNotFound, http.StatusNotFound},
 	{core.ErrBindingNotFound, http.StatusNotFound},
 	{core.ErrSessionSelectionRequired, http.StatusConflict},

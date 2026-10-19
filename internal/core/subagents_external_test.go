@@ -73,15 +73,14 @@ func TestReadonlyExternalChildNeverAsksAndCannotWrite(t *testing.T) {
 	for _, runtimeID := range []string{"codex", "claude"} {
 		t.Run(runtimeID, func(t *testing.T) {
 			t.Parallel()
-			app, db, cleanup := newCrashRecoveryCore(t)
+			db, cleanup := newCrashRecoveryStore(t)
 			defer cleanup()
 			runtime := &childExternalRuntime{id: runtimeID}
 			registry, err := externalagents.NewRegistry(runtime)
 			if err != nil {
 				t.Fatal(err)
 			}
-			starter := &executingRunStarter{app: app}
-			app.WithExternalAgents(registry, db).WithRunStarter(starter)
+			app, starter := executingCore(core.Config{Store: db, ExternalAgents: registry, ExternalAgentStore: db})
 			session, run := saveCrashRecoveryRun(t, db, "readonly_"+runtimeID, core.RunStatusRunning, false)
 			sessionIn(t, db, session, t.TempDir(), core.PermissionModeFullAuto)
 
@@ -113,16 +112,16 @@ func TestReadonlyExternalChildNeverAsksAndCannotWrite(t *testing.T) {
 
 func TestASlowExternalChildStartDoesNotHoldItsParent(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	runtime := &childExternalRuntime{id: "codex", entered: make(chan struct{}, 1), hold: make(chan struct{})}
 	registry, err := externalagents.NewRegistry(runtime)
 	if err != nil {
 		t.Fatal(err)
 	}
+	app, _ := executingCore(core.Config{Store: db, ExternalAgents: registry, ExternalAgentStore: db})
 	release := sync.OnceFunc(func() { close(runtime.hold) })
 	defer release()
-	app.WithExternalAgents(registry, db).WithRunStarter(&executingRunStarter{app: app})
 	session, run := saveCrashRecoveryRun(t, db, "slow_start", core.RunStatusRunning, false)
 	sessionIn(t, db, session, t.TempDir(), core.PermissionModeFullAuto)
 	done := make(chan error, 1)

@@ -18,7 +18,7 @@ func TestNextRunInASessionKeepsWhatTheLastRunElided(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("probe", tools.EffectReadOnly), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("probe", tools.EffectReadOnly), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
 		return tools.Result{Content: call.ToolCallID + "\n" + strings.Repeat("y", 8_000)}, nil
 	}}))
 	// The provider counts ~26k tokens where the estimate sees far fewer, so the
@@ -26,7 +26,7 @@ func TestNextRunInASessionKeepsWhatTheLastRunElided(t *testing.T) {
 	// the elision threshold.
 	var requests []providers.Request
 	steps := 0
-	app.WithSessionLLMs(windowLLMs{window: 60_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(windowLLMs{window: 60_000, recoveryLLMs: recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		requests = append(requests, request)
 		usage := providers.Usage{PromptTokens: 26_000, OutputTokens: 10}
 		last := request.Messages[len(request.Messages)-1]

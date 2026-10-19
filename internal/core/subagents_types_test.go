@@ -45,11 +45,11 @@ func TestTypedChildrenGetTheirProfilesTools(t *testing.T) {
 			defer cleanup()
 			bash := textTool("bash", tools.EffectMutation)
 			bash.spec.Category = tools.CategoryShell
-			app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), textTool("read", tools.EffectReadOnly), textTool("write", tools.EffectMutation), bash)...))
+			app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), textTool("read", tools.EffectReadOnly), textTool("write", tools.EffectMutation), bash)...))
 			var mu sync.Mutex
 			var seen []string
 			var writeResult string
-			app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+			app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 				mu.Lock()
 				defer mu.Unlock()
 				results := toolResults(request)
@@ -106,9 +106,9 @@ func offeredAgentTypes(t *testing.T, dir string, replyOnce bool) []string {
 	t.Helper()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	var request providers.Request
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, seen providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, seen providers.Request) (providers.Response, error) {
 		request = seen
 		return providers.Response{Text: "Hi."}, nil
 	})})
@@ -168,10 +168,10 @@ func schemaChild(t *testing.T, answers ...string) (string, core.Task, int) {
 	t.Helper()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
+	app.SetTools(tools.NewRegistry(core.AgentToolExecutors(app)...))
 	var mu sync.Mutex
 	childRequests := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		switch {
@@ -213,19 +213,18 @@ func TestOutputSchemaGetsOneCorrection(t *testing.T) {
 
 func TestAgentSteerReachesARunningBackgroundChild(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
-	starter := &executingRunStarter{app: app}
-	app.WithRunStarter(starter)
+	app, starter := executingCore(core.Config{Store: db})
 	waiting, release := make(chan struct{}), make(chan struct{})
 	wait := funcTool{spec: recoveryToolSpec("wait_here", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		close(waiting)
 		<-release
 		return tools.Result{Content: "waited"}, nil
 	}}
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), wait)...))
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), wait)...))
 	steered := make(chan bool, 1)
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		answered := len(toolResults(request)) > 0
 		switch {
 		case childTask(request) != "" && !answered:
@@ -279,16 +278,16 @@ var taskIDPattern = regexp.MustCompile(`"task_id":"(task_[^"]+)"`)
 // returns for each child result; it returns the core and store.
 func worktreeChildren(t *testing.T, repo string, worktrees string, prompts []string, next func(prompt string, taskID string) *providers.ToolCall) (*core.Core, *store.SQLiteStore, core.Session) {
 	t.Helper()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	t.Cleanup(cleanup)
-	app.WithWorktrees(worktrees)
+	app := core.New(core.Config{Store: db, Worktrees: worktrees})
 	write := funcTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation), fn: func(_ context.Context, call tools.Call) (tools.Result, error) {
 		name := strings.TrimPrefix(call.ToolCallID, "edit-")
 		return tools.Result{Content: "wrote"}, os.WriteFile(filepath.Join(call.WorkingDir, name+".txt"), []byte(name+"\n"), 0o644)
 	}}
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), write)...))
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), write)...))
 	var mu sync.Mutex
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		results := toolResults(request)
@@ -402,8 +401,8 @@ func TestStaleWorktreesArePrunedAtStart(t *testing.T) {
 		t.Fatalf("the orphan worktree is left: %v", err)
 	}
 
-	app.WithClock(func() time.Time { return time.Now().Add(8 * 24 * time.Hour) })
-	if err := app.Recover(context.Background()); err != nil {
+	later := core.New(core.Config{Store: db, Worktrees: worktrees, Clock: func() time.Time { return time.Now().Add(8 * 24 * time.Hour) }})
+	if err := later.Recover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(kept.WorkingDir); !os.IsNotExist(err) {

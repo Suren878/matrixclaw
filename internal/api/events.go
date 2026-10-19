@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Suren878/matrixclaw/internal/core"
+	"github.com/Suren878/matrixclaw/internal/events"
 )
 
 type eventReadyResponse struct {
@@ -40,7 +40,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	events := s.Core.SubscribeEventsAfter(r.Context(), sessionID, afterID)
+	events := s.Core.SubscribeEvents(r.Context(), sessionID, afterID)
 	if writeSSE(w, "ready", eventReadyResponse{SessionID: sessionID, AfterID: afterID}) != nil {
 		return
 	}
@@ -83,7 +83,7 @@ func writeSSE(w io.Writer, eventType string, payload any) error {
 		return err
 	}
 	var id string
-	if event, ok := payload.(core.Event); ok && event.ID > 0 {
+	if event, ok := payload.(events.Event); ok && event.ID > 0 {
 		id = fmt.Sprintf("id: %d\n", event.ID)
 	}
 	_, err = fmt.Fprintf(w, "%sevent: %s\ndata: %s\n\n", id, eventType, body)

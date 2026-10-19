@@ -16,13 +16,6 @@ import (
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
-// WithSessionFiles sets the directory that holds per-session files such as full
-// tool outputs; a session's files are removed with it.
-func (c *Core) WithSessionFiles(root string) *Core {
-	c.sessionFiles = strings.TrimSpace(root)
-	return c
-}
-
 // keepLargeOutput writes a result too large for the model's context to a file of
 // the session and leaves the model its head and tail with the file's path. A
 // result that already names the file with its whole output is left as it is.

@@ -5,12 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
 
-func (s *SQLiteStore) CreateMemory(ctx context.Context, entry core.MemoryEntry) error {
+func (s *SQLiteStore) CreateMemory(ctx context.Context, entry memory.Entry) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO memories(id, scope, key, content, working_dir, pending, created_at, updated_at)
 VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -29,7 +30,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
 	return nil
 }
 
-func (s *SQLiteStore) UpdateMemory(ctx context.Context, entry core.MemoryEntry) error {
+func (s *SQLiteStore) UpdateMemory(ctx context.Context, entry memory.Entry) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE memories
 SET scope = ?, key = ?, content = ?, working_dir = ?, pending = ?, updated_at = ?
@@ -66,7 +67,7 @@ func (s *SQLiteStore) DeleteMemory(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *SQLiteStore) GetMemory(ctx context.Context, id string) (core.MemoryEntry, error) {
+func (s *SQLiteStore) GetMemory(ctx context.Context, id string) (memory.Entry, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT id, scope, key, content, working_dir, pending, created_at, updated_at
 FROM memories
@@ -74,14 +75,14 @@ WHERE id = ?`, id)
 	entry, err := scanMemory(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return core.MemoryEntry{}, core.ErrNotFound
+			return memory.Entry{}, core.ErrNotFound
 		}
-		return core.MemoryEntry{}, fmt.Errorf("store: get memory: %w", err)
+		return memory.Entry{}, fmt.Errorf("store: get memory: %w", err)
 	}
 	return entry, nil
 }
 
-func (s *SQLiteStore) ListMemories(ctx context.Context, filter core.MemoryFilter) ([]core.MemoryEntry, error) {
+func (s *SQLiteStore) ListMemories(ctx context.Context, filter memory.Filter) ([]memory.Entry, error) {
 	query := `
 SELECT id, scope, key, content, working_dir, pending, created_at, updated_at
 FROM memories`
@@ -104,17 +105,17 @@ FROM memories`
 	return queryAll(ctx, s.db, "memories", scanMemory, query, args...)
 }
 
-func scanMemory(scanner rowScanner) (core.MemoryEntry, error) {
-	var entry core.MemoryEntry
+func scanMemory(scanner rowScanner) (memory.Entry, error) {
+	var entry memory.Entry
 	var scope string
 	var createdAt string
 	var updatedAt string
 	var pending int
 	if err := scanner.Scan(&entry.ID, &scope, &entry.Key, &entry.Content, &entry.WorkingDir, &pending, &createdAt, &updatedAt); err != nil {
-		return core.MemoryEntry{}, err
+		return memory.Entry{}, err
 	}
 	entry.Pending = pending != 0
-	entry.Scope = core.MemoryScope(scope)
+	entry.Scope = memory.Scope(scope)
 	entry.CreatedAt = mustParseTime(createdAt)
 	entry.UpdatedAt = mustParseTime(updatedAt)
 	return entry, nil

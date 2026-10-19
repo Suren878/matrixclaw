@@ -1,13 +1,14 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/agent"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
@@ -32,54 +33,17 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 		return AcceptRunResult{}, err
 	}
 
-	var result AcceptRunResult
-	var startRunID string
-	var interruptRunID string
-	var wakeRunID string
-	gate := c.sessionGate(session.ID)
-	gate.Lock()
-	active, err := c.store.GetActiveRunBySession(ctx, session.ID)
-	switch {
-	case err == nil:
-		pending, createErr := c.createPendingSessionInput(ctx, session, active, input, text, parts)
-		if createErr == nil && pending.Mode == BusyInputModeSteer {
-			createErr = c.deliverRunToSteerer(ctx, active, input, text, parts)
-		}
-		if createErr != nil {
-			gate.Unlock()
-			return AcceptRunResult{}, createErr
-		}
-		result = AcceptRunResult{
-			SessionID: session.ID,
-			Status:    acceptRunStatusForInputMode(pending.Mode),
-			Input:     &pending,
-		}
-		switch {
-		case pending.Mode == BusyInputModeInterrupt:
-			interruptRunID = active.ID
-		case pending.Mode == BusyInputModeSteer && active.Status == RunStatusWaitingEvents:
-			wakeRunID = active.ID
-		}
-	case errors.Is(err, ErrNotFound):
-		result, err = c.createAcceptedRun(ctx, session, clientRun(text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, deliveryTo{input.DeliveryAddress, input.ReplyOnce}))
-		if err != nil {
-			gate.Unlock()
-			return AcceptRunResult{}, err
-		}
-		startRunID = result.Run.ID
-	default:
-		gate.Unlock()
+	result, next, err := c.acceptUnderGate(ctx, session, input, text, parts)
+	if err != nil {
 		return AcceptRunResult{}, err
 	}
-	gate.Unlock()
-
-	if wakeRunID != "" {
-		if err := c.wakeWaitingRun(ctx, session.ID, wakeRunID); err != nil {
+	if next.wake != "" {
+		if err := c.wakeWaitingRun(ctx, session.ID, next.wake); err != nil {
 			return result, err
 		}
 	}
-	if interruptRunID != "" {
-		if _, err := c.CancelRun(ctx, interruptRunID); err != nil {
+	if next.interrupt != "" {
+		if _, err := c.CancelRun(ctx, next.interrupt); err != nil {
 			return result, err
 		}
 		if _, err := c.startNextPendingSessionInput(ctx, session.ID); err != nil {
@@ -88,8 +52,8 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 	}
 
 	// The daemon hands execution off here; transport is already out of the picture.
-	if startRunID != "" {
-		if err := c.startRun(ctx, startRunID); err != nil {
+	if next.start != "" {
+		if err := c.startRun(ctx, next.start); err != nil {
 			return c.failAcceptedRun(ctx, result, err)
 		}
 	}
@@ -97,26 +61,49 @@ func (c *Core) AcceptRun(ctx context.Context, input HandleMessageInput) (AcceptR
 	return result, nil
 }
 
-// deliverRunToSteerer delivers the run a message steers to the address it came
-// from as well, unless the run is delivered there already.
-func (c *Core) deliverRunToSteerer(ctx context.Context, run Run, input HandleMessageInput, text string, parts []transcript.MessagePart) error {
-	if !input.ClientCapabilities.ReceivesDeliveries {
-		return nil
-	}
-	delivery, ok, err := c.prepareSessionRunDelivery(run, text, parts, input.Client, input.ExternalKey, deliveryTo{input.DeliveryAddress, input.ReplyOnce})
-	if err != nil || !ok {
-		return err
-	}
-	existing, err := c.store.ListClientDeliveries(ctx, ClientDeliveryFilter{Client: delivery.Client, ExternalKey: delivery.ExternalKey, RunID: run.ID, Type: ClientDeliveryTypeRun})
-	if err != nil {
-		return err
-	}
-	for _, other := range existing {
-		if bytes.Equal(other.Address, delivery.Address) {
-			return nil
+// acceptFollowUp is the run accepting a message starts, interrupts or wakes
+// once the session gate is released.
+type acceptFollowUp struct {
+	start, interrupt, wake string
+}
+
+// acceptUnderGate accepts a message under its session's gate: as a new run
+// of an idle session, else as input to the active run.
+func (c *Core) acceptUnderGate(ctx context.Context, session Session, input HandleMessageInput, text string, parts []transcript.MessagePart) (AcceptRunResult, acceptFollowUp, error) {
+	gate := c.sessionGate(session.ID)
+	gate.Lock()
+	defer gate.Unlock()
+	active, err := c.store.GetActiveRunBySession(ctx, session.ID)
+	if errors.Is(err, ErrNotFound) {
+		result, err := c.createAcceptedRun(ctx, session, clientRun(text, parts, input.Client, input.ExternalKey, input.ClientCapabilities, deliveryTo{input.DeliveryAddress, input.ReplyOnce}))
+		if err != nil {
+			return AcceptRunResult{}, acceptFollowUp{}, err
 		}
+		return result, acceptFollowUp{start: result.Run.ID}, nil
 	}
-	return c.store.CreateClientDelivery(ctx, delivery)
+	if err != nil {
+		return AcceptRunResult{}, acceptFollowUp{}, err
+	}
+	pending, err := c.createPendingSessionInput(ctx, session, active, input, text, parts)
+	if err == nil && pending.Mode == BusyInputModeSteer {
+		err = c.deliverRunToSteerer(ctx, active, input, text, parts)
+	}
+	if err != nil {
+		return AcceptRunResult{}, acceptFollowUp{}, err
+	}
+	result := AcceptRunResult{
+		SessionID: session.ID,
+		Status:    acceptRunStatusForInputMode(pending.Mode),
+		Input:     &pending,
+	}
+	var next acceptFollowUp
+	switch {
+	case pending.Mode == BusyInputModeInterrupt:
+		next.interrupt = active.ID
+	case pending.Mode == BusyInputModeSteer && active.Status == RunStatusWaitingEvents:
+		next.wake = active.ID
+	}
+	return result, next, nil
 }
 
 func messagePartsHaveUserContent(parts []transcript.MessagePart) bool {
@@ -152,17 +139,7 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 		return result, err
 	}
 
-	// A session busy with another run refuses the trigger; automation tries it again later.
-	gate := c.sessionGate(session.ID)
-	gate.Lock()
-	if _, err := c.store.GetActiveRunBySession(ctx, session.ID); !errors.Is(err, ErrNotFound) {
-		gate.Unlock()
-		if err == nil {
-			err = fmt.Errorf("%w: the session is busy with another run", ErrRunActive)
-		}
-		return AcceptRunResult{}, err
-	}
-	result, err := c.createAcceptedRun(ctx, session, newRun{
+	result, err := c.acceptIdleRun(ctx, session, newRun{
 		RunID:        runID,
 		MessageID:    deterministicMessageID(triggerID),
 		Text:         text,
@@ -172,7 +149,6 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 		Capabilities: input.ClientCapabilities,
 		Trigger:      RunTriggerAutomation,
 	})
-	gate.Unlock()
 	if err != nil {
 		if existing, ok, _ := c.triggeredRun(ctx, runID, text); ok {
 			return existing, nil
@@ -183,6 +159,21 @@ func (c *Core) AcceptTriggeredRun(ctx context.Context, input HandleTriggeredRunI
 		return c.failAcceptedRun(ctx, result, err)
 	}
 	return result, nil
+}
+
+// acceptIdleRun accepts run unless its session is busy with another run; a
+// busy session refuses the trigger, and automation tries it again later.
+func (c *Core) acceptIdleRun(ctx context.Context, session Session, run newRun) (AcceptRunResult, error) {
+	gate := c.sessionGate(session.ID)
+	gate.Lock()
+	defer gate.Unlock()
+	if _, err := c.store.GetActiveRunBySession(ctx, session.ID); !errors.Is(err, ErrNotFound) {
+		if err == nil {
+			err = fmt.Errorf("%w: the session is busy with another run", ErrRunActive)
+		}
+		return AcceptRunResult{}, err
+	}
+	return c.createAcceptedRun(ctx, session, run)
 }
 
 func (c *Core) startRun(ctx context.Context, runID string) error {
@@ -370,7 +361,7 @@ func (c *Core) rejectRunApprovals(ctx context.Context, run Run, errText string) 
 			return err
 		}
 		audience, audienceRun := c.approvalAudience(ctx, approval)
-		c.publishEvent(Event{
+		c.publishEvent(events.Event{
 			Type:      EventApprovalResult,
 			SessionID: audience,
 			RunID:     audienceRun,
@@ -387,4 +378,60 @@ func (c *Core) rejectRunApprovals(ctx context.Context, run Run, errText string) 
 		})
 	}
 	return nil
+}
+
+type activeRun struct {
+	cancel context.CancelCauseFunc
+}
+
+func (c *Core) activeRunContext(parent context.Context, runID string) (context.Context, func(), bool) {
+	if runID == "" {
+		return parent, func() {}, true
+	}
+
+	ctx, cancel := context.WithCancelCause(parent)
+	active := &activeRun{cancel: cancel}
+	c.mu.Lock()
+	if c.activeRuns[runID] != nil {
+		c.mu.Unlock()
+		cancel(nil)
+		return parent, func() {}, false
+	}
+	delete(c.scheduledRuns, runID)
+	c.activeRuns[runID] = active
+	c.mu.Unlock()
+
+	return ctx, func() {
+		c.mu.Lock()
+		if c.activeRuns[runID] == active {
+			delete(c.activeRuns, runID)
+		}
+		c.mu.Unlock()
+		cancel(nil)
+	}, true
+}
+
+func (c *Core) runIsActive(runID string) bool {
+	if runID == "" {
+		return false
+	}
+	c.mu.RLock()
+	active := c.activeRuns[runID]
+	c.mu.RUnlock()
+	return active != nil
+}
+
+// cancelActiveRun stops the run's executor with agent.ErrCanceled as the cause,
+// which tells a cancel from an interruption.
+func (c *Core) cancelActiveRun(runID string) {
+	if runID == "" {
+		return
+	}
+
+	c.mu.RLock()
+	active := c.activeRuns[runID]
+	c.mu.RUnlock()
+	if active != nil && active.cancel != nil {
+		active.cancel(agent.ErrCanceled)
+	}
 }

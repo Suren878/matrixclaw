@@ -55,7 +55,7 @@ func TestWorktreeStartsFromTheParentsUncommittedFiles(t *testing.T) {
 	writeTestFile(t, filepath.Join(repo, "new.txt"), "untracked\n")
 	writeTestFile(t, filepath.Join(repo, "debug.log"), "ignored\n")
 	indexBefore, statusBefore := testGit(t, repo, "diff", "--cached", "--name-status"), testGit(t, repo, "status", "--porcelain")
-	c := New(nil).WithWorktrees(t.TempDir())
+	c := New(Config{Worktrees: t.TempDir()})
 
 	tree, err := c.prepareSubagentWorktree(context.Background(), filepath.Join(repo, "pkg"), "task_base")
 	if err != nil {

@@ -32,10 +32,10 @@ func TestNativeRunEndsWithAFinalTurnAtTheDefaultStepBudget(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(changingTool("inspect_state")))
+	app.SetTools(tools.NewRegistry(changingTool("inspect_state")))
 	steps := core.DefaultRunBudgets().User.Steps
 	var choices []providers.ToolChoice
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		choices = append(choices, request.ToolChoice)
 		if request.ToolChoice == providers.ToolChoiceNone {
 			return providers.Response{Text: fmt.Sprintf("Inspected %d times; more remains.", steps)}, nil
@@ -75,15 +75,15 @@ func TestNativeRunEndsWithAFinalTurnAtTheDefaultStepBudget(t *testing.T) {
 
 func TestBudgetCountersSurviveAnApprovalPark(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	app.SetTuning(core.Tuning{Budgets: core.RunBudgets{User: agent.Budget{Steps: 2}}})
 	mutations := 0
 	mutate, _ := approvalTools(&mutations)
-	app.WithTools(tools.NewRegistry(mutate, changingTool("inspect_state")))
-	app.WithRunStarter(&recordingRunStarter{})
+	app.SetTools(tools.NewRegistry(mutate, changingTool("inspect_state")))
 	var requests []providers.Request
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		requests = append(requests, request)
 		switch len(requests) {
 		case 1:
@@ -133,7 +133,7 @@ func TestRecoveredRunKeepsItsBudgetCounters(t *testing.T) {
 	defer cleanup()
 	app.SetTuning(core.Tuning{Budgets: core.RunBudgets{User: agent.Budget{Steps: 2}}})
 	runtime := &recoveryRuntime{text: "Stopped after the restart."}
-	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
 	_, run := saveCrashRecoveryRun(t, db, "budget-recovery", core.RunStatusRunning, false)
 	if err := db.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
 		RunID: run.ID, EngineState: json.RawMessage(`{"steps":2}`), UpdatedAt: run.UpdatedAt,
@@ -160,7 +160,7 @@ func TestRecoveredRunKeepsItsRaisedOutputLimit(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	runtime := &recoveryRuntime{text: "Finished after the restart."}
-	app.WithSessionLLMs(recoveryLLMs{runtime: runtime})
+	app.SetSessionLLMs(recoveryLLMs{runtime: runtime})
 	_, run := saveCrashRecoveryRun(t, db, "output-limit-recovery", core.RunStatusRunning, false)
 	if err := db.SaveRunCheckpoint(context.Background(), core.RunCheckpoint{
 		RunID: run.ID, EngineState: json.RawMessage(`{"output_limit":8000}`), UpdatedAt: run.UpdatedAt,
@@ -190,13 +190,13 @@ func TestRunBudgetFollowsTheTrigger(t *testing.T) {
 		{"automation", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			app, db, cleanup := newCrashRecoveryCore(t)
+			db, cleanup := newCrashRecoveryStore(t)
 			defer cleanup()
+			app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 			app.SetTuning(core.Tuning{Budgets: budgets})
-			app.WithRunStarter(&recordingRunStarter{})
-			app.WithTools(tools.NewRegistry(changingTool("inspect_state")))
+			app.SetTools(tools.NewRegistry(changingTool("inspect_state")))
 			withTools := 0
-			app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+			app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 				if request.ToolChoice == providers.ToolChoiceNone {
 					return providers.Response{Text: "Out of budget."}, nil
 				}
@@ -233,9 +233,9 @@ func TestSessionBudgetOverridesTheDefault(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithTools(tools.NewRegistry(changingTool("inspect_state")))
+	app.SetTools(tools.NewRegistry(changingTool("inspect_state")))
 	withTools := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if request.ToolChoice == providers.ToolChoiceNone {
 			return providers.Response{Text: "Out of budget."}, nil
 		}
@@ -266,9 +266,9 @@ func TestSubagentStoppedAtItsBudgetReportsAPartialResult(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	app.SetTuning(core.Tuning{Budgets: core.RunBudgets{User: agent.Budget{Steps: 5}, Subagent: agent.Budget{Steps: 1}}})
-	app.WithTools(tools.NewRegistry(append(core.AgentToolExecutors(app), changingTool("inspect_state"))...))
+	app.SetTools(tools.NewRegistry(append(core.AgentToolExecutors(app), changingTool("inspect_state"))...))
 	parentCalls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.Contains(request.SystemPrompt, "Subagent mode:") {
 			if request.ToolChoice == providers.ToolChoiceNone {
 				return providers.Response{Text: "found 2 of 3 files"}, nil

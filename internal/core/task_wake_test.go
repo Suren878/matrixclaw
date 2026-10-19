@@ -35,11 +35,10 @@ type wakeScenario struct {
 func newWakeScenario(t *testing.T) *wakeScenario {
 	t.Helper()
 	db := openScenarioStore(t)
-	app := core.New(db)
-	s := &wakeScenario{app: app, db: db, starter: &executingRunStarter{app: app}}
-	app.WithSessionFiles(t.TempDir()).WithRunStarter(s.starter)
-	app.WithTools(tools.NewRegistry(core.AwaitToolExecutors(app)...))
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app, starter := executingCore(core.Config{Store: db, SessionFiles: t.TempDir()})
+	s := &wakeScenario{app: app, db: db, starter: starter}
+	app.SetTools(tools.NewRegistry(core.AwaitToolExecutors(app)...))
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.requests = append(s.requests, request)
@@ -204,14 +203,14 @@ func TestAPhotoSteeredIntoABusyRunReachesTheModel(t *testing.T) {
 	defer cleanup()
 	started := make(chan struct{})
 	release := make(chan struct{})
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		close(started)
 		<-release
 		return tools.Result{Content: "inspected"}, nil
 	}}))
 	var last providers.Request
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: visionRuntime{func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: visionRuntime{func(_ context.Context, request providers.Request) (providers.Response, error) {
 		last = request
 		if calls++; calls == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "call-img", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
@@ -303,11 +302,10 @@ func TestReplyOnceMessagesToABusySessionWaitForTheirOwnRun(t *testing.T) {
 func TestWakeRunTakesItsEventsBeforeItStarts(t *testing.T) {
 	t.Parallel()
 	db := openScenarioStore(t)
-	app := core.New(db)
 	starter := &recordingRunStarter{}
-	app.WithSessionFiles(t.TempDir()).WithRunStarter(starter)
+	app := core.New(core.Config{Store: db, SessionFiles: t.TempDir(), RunStarter: starter})
 	var requests []providers.Request
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		requests = append(requests, request)
 		return providers.Response{Text: "Reported."}, nil
 	})})
@@ -397,7 +395,7 @@ func TestFailedWakeRunStopsTheChainWithOneNotice(t *testing.T) {
 	s := newWakeScenario(t)
 	s.userRun(t)
 	s.starter.wait(t)
-	s.app.WithSessionLLMs(recoveryLLMs{})
+	s.app.SetSessionLLMs(recoveryLLMs{})
 	ctx := context.Background()
 
 	s.finishedTask(t, "task_a")

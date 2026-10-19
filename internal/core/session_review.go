@@ -11,6 +11,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/agent"
 	agentcontext "github.com/Suren878/matrixclaw/internal/agent/context"
+	"github.com/Suren878/matrixclaw/internal/memory"
 	"github.com/Suren878/matrixclaw/internal/providers"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -60,13 +61,6 @@ type SkillLearning interface {
 	DraftProposal(ctx context.Context, proposal SkillProposal) (string, error)
 }
 
-// WithSkillLearning turns on session reviews, which file what they find with
-// learning.
-func (c *Core) WithSkillLearning(learning SkillLearning) *Core {
-	c.reviews.learning = learning
-	return c
-}
-
 // sessionReviews keeps the reviews of this daemon: the sessions in review and
 // when each was last asked for one.
 type sessionReviews struct {
@@ -109,10 +103,11 @@ func (r *sessionReviews) ask(sessionID string, at time.Time, interval time.Durat
 
 // reviewIdleSession reviews the session in the background when a review is
 // due. afterEnd calls it once the session started nothing more; the review
-// holds no gate, starts no run and stops with the daemon.
+// holds no gate, starts no run and stops with the daemon. Without memory
+// to suggest entries to there is no review.
 func (c *Core) reviewIdleSession(sessionID string) {
 	learning := c.reviews.learning
-	if learning == nil || c.lifetime.Err() != nil {
+	if learning == nil || c.memory == nil || c.lifetime.Err() != nil {
 		return
 	}
 	settings := learning.ReviewSettings()
@@ -168,7 +163,7 @@ func (c *Core) reviewSession(ctx context.Context, sessionID string, settings Ses
 	if err != nil {
 		return err
 	}
-	remembered, err := c.store.ListMemories(ctx, MemoryFilter{WorkingDir: normalizeWorkingDir(session.WorkingDir), Limit: defaultMemoryLimit})
+	remembered, err := c.memory.List(ctx, memory.Filter{WorkingDir: session.WorkingDir})
 	if err != nil {
 		return err
 	}
@@ -277,14 +272,14 @@ func (c *Core) generateReview(ctx context.Context, runID string, model agent.Mod
 
 // fileReview files the review's skills as drafts and its memories as pending
 // entries, leaving out entries already remembered or suggested.
-func (c *Core) fileReview(ctx context.Context, review sessionReview, remembered []MemoryEntry) (drafts int, suggested int, err error) {
+func (c *Core) fileReview(ctx context.Context, review sessionReview, remembered []memory.Entry) (drafts int, suggested int, err error) {
 	for _, proposal := range review.Skills {
 		if _, err := c.reviews.learning.DraftProposal(ctx, proposal); err != nil {
 			return drafts, suggested, err
 		}
 		drafts++
 	}
-	pending, err := c.store.ListMemories(ctx, MemoryFilter{Pending: true})
+	pending, err := c.memory.List(ctx, memory.Filter{Pending: true})
 	if err != nil {
 		return drafts, suggested, err
 	}
@@ -298,7 +293,7 @@ func (c *Core) fileReview(ctx context.Context, review sessionReview, remembered 
 		}
 		known[strings.ToLower(entry.Content)] = true
 		entry.Pending = true
-		if _, err := c.CreateMemory(ctx, entry); err != nil {
+		if _, err := c.memory.Create(ctx, entry); err != nil {
 			return drafts, suggested, err
 		}
 		suggested++

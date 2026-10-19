@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Suren878/matrixclaw/internal/core"
 )
@@ -93,24 +94,38 @@ FROM client_deliveries`
 	return queryAll(ctx, s.db, "client deliveries", scanClientDelivery, query, args...)
 }
 
-func (s *SQLiteStore) UpdateClientDelivery(ctx context.Context, delivery core.ClientDelivery) error {
+func (s *SQLiteStore) FinishClientDelivery(ctx context.Context, id string, status core.ClientDeliveryStatus, errText string, at time.Time) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE client_deliveries
 SET status = ?, error = ?, updated_at = ?, finished_at = ?
 WHERE id = ?`,
-		string(delivery.Status),
-		delivery.Error,
-		formatTime(delivery.UpdatedAt),
-		nullableTime(delivery.FinishedAt),
-		delivery.ID,
+		string(status),
+		errText,
+		formatTime(at),
+		formatTime(at),
+		id,
 	)
 	if err != nil {
-		return fmt.Errorf("store: update client delivery: %w", err)
+		return fmt.Errorf("store: finish client delivery: %w", err)
 	}
 	if rows, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("store: update client delivery rows: %w", err)
+		return fmt.Errorf("store: finish client delivery rows: %w", err)
 	} else if rows == 0 {
 		return core.ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ReleaseHeldClientDeliveries(ctx context.Context, at time.Time) error {
+	if _, err := s.db.ExecContext(ctx, `
+UPDATE client_deliveries
+SET status = ?, updated_at = ?
+WHERE status = ?`,
+		string(core.ClientDeliveryStatusPending),
+		formatTime(at),
+		string(core.ClientDeliveryStatusHeld),
+	); err != nil {
+		return fmt.Errorf("store: release held client deliveries: %w", err)
 	}
 	return nil
 }

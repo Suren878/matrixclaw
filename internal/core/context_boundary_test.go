@@ -49,7 +49,7 @@ func TestClearContextClearsTheTodoList(t *testing.T) {
 	if err := db.SaveSessionTodo(ctx, todo.List{SessionID: session.ID, Items: []todo.Item{{Content: "a", Status: todo.Pending}}, UpdatedRunID: run.ID}); err != nil {
 		t.Fatal(err)
 	}
-	events := app.SubscribeEvents(ctx, session.ID)
+	events := app.SubscribeEvents(ctx, session.ID, 0)
 
 	if _, err := app.ClearContext(ctx, session.ID); err != nil {
 		t.Fatal(err)
@@ -78,9 +78,9 @@ func TestUnreadableBoundaryIsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	app := core.New(db)
+	app := core.New(core.Config{Store: db})
 	var seen providers.Request
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		seen = request
 		return providers.Response{Text: "Done."}, nil
 	})})
@@ -118,7 +118,7 @@ func TestCompactWithNothingToSummariseIsInvalidInput(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{Text: "SUMMARY"}, nil
 	})})
 	now := runRecoveryTestTime()
@@ -141,15 +141,15 @@ func TestCompactWithNothingToSummariseIsInvalidInput(t *testing.T) {
 
 func TestClearContextRemovesTheToolOutputsItCovers(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
 	files := t.TempDir()
-	app.WithSessionFiles(files)
-	app.WithTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
+	app := core.New(core.Config{Store: db, SessionFiles: files})
+	app.SetTools(tools.NewRegistry(funcTool{spec: recoveryToolSpec("dump", tools.EffectReadOnly), fn: func(context.Context, tools.Call) (tools.Result, error) {
 		return tools.Result{Content: strings.Repeat("d", 60_000)}, nil
 	}}))
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "dump_1", Name: "dump", Arguments: []byte(`{}`)}}}, nil

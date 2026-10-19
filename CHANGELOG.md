@@ -82,6 +82,9 @@ done.
   refreshes are locked across processes and a 401 refreshes once.
 - Reload re-applies run budgets, model concurrency, background limits, the
   automation timezone and delivery targets.
+- A memory scope other than global, user or project is refused (400 on the
+  API) instead of being saved as global. Memory that cannot be read is
+  logged, and a run is no longer told every entry was removed.
 
 ### Security
 

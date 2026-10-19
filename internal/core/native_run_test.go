@@ -25,9 +25,9 @@ func TestToolTurnPersistsFinalCommentaryAndUsage(t *testing.T) {
 			app, db, cleanup := newCrashRecoveryCore(t)
 			defer cleanup()
 			tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
-			app.WithTools(tools.NewRegistry(tool))
+			app.SetTools(tools.NewRegistry(tool))
 			calls := 0
-			app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
+			app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, request providers.Request) (providers.Response, error) {
 				calls++
 				if calls == 1 {
 					if stream {
@@ -103,9 +103,9 @@ func TestEmptyModelReplyRetriesWithoutReexecutingTool(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
-	app.WithTools(tools.NewRegistry(tool))
+	app.SetTools(tools.NewRegistry(tool))
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -131,9 +131,9 @@ func TestRepeatedToolCallIDExecutesOnlyOnce(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
-	app.WithTools(tools.NewRegistry(tool))
+	app.SetTools(tools.NewRegistry(tool))
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		calls++
 		if calls <= 2 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "repeated", Name: "inspect_state", Arguments: []byte(`{}`)}, {ID: "repeated", Name: "inspect_state", Arguments: []byte(`{ }`)}}}, nil
@@ -155,9 +155,9 @@ func TestUnknownToolIsReturnedToModelForCorrection(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
-	app.WithTools(tools.NewRegistry(tool))
+	app.SetTools(tools.NewRegistry(tool))
 	calls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		calls++
 		if calls == 1 {
 			return providers.Response{ToolCalls: []providers.ToolCall{{ID: "bad-call", Name: "misspelled_tool", Arguments: []byte(`{}`)}}}, nil
@@ -191,12 +191,12 @@ func TestToolCallIDCollisionAcrossSessionsFailsRunClearly(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	tool := &recoveryTool{spec: recoveryToolSpec("inspect_state", tools.EffectReadOnly)}
-	app.WithTools(tools.NewRegistry(tool))
+	app.SetTools(tools.NewRegistry(tool))
 
 	_, otherRun := saveCrashRecoveryRun(t, db, "other", core.RunStatusAccepted, false)
 	saveInterruptedToolCall(t, db, otherRun, "shared-call", "inspect_state")
 
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(context.Context, providers.Request) (providers.Response, error) {
 		return providers.Response{ToolCalls: []providers.ToolCall{{ID: "shared-call", Name: "inspect_state", Arguments: []byte(`{}`)}}}, nil
 	})})
 	_, run := saveCrashRecoveryRun(t, db, "main", core.RunStatusAccepted, false)
@@ -220,13 +220,13 @@ func (t *failingApprovedTool) Execute(ctx context.Context, call tools.Call) (too
 
 func TestApprovedToolFailureIsReturnedToModelWithoutReplay(t *testing.T) {
 	t.Parallel()
-	app, db, cleanup := newCrashRecoveryCore(t)
+	db, cleanup := newCrashRecoveryStore(t)
 	defer cleanup()
+	app := core.New(core.Config{Store: db, RunStarter: &recordingRunStarter{}})
 	tool := &failingApprovedTool{recoveryTool{spec: recoveryToolSpec("mutate_state", tools.EffectMutation)}}
-	app.WithTools(tools.NewRegistry(tool))
-	app.WithRunStarter(&recordingRunStarter{})
+	app.SetTools(tools.NewRegistry(tool))
 	modelCalls := 0
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		modelCalls++
 		for _, message := range request.Messages {
 			if message.Role == "tool" && message.ToolCallID == "approved-call" && strings.Contains(message.Content, "target changed") {
@@ -274,7 +274,7 @@ func TestPermanentModelFailuresFailTheRunOnceAndKeepPartialOutput(t *testing.T) 
 			app, db, cleanup := newCrashRecoveryCore(t)
 			defer cleanup()
 			calls := 0
-			app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
+			app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(ctx context.Context, _ providers.Request) (providers.Response, error) {
 				calls++
 				if tc.partial != "" {
 					if err := providers.StreamText(ctx, tc.partial); err != nil {
@@ -316,7 +316,7 @@ func TestRunStepsCountCompactionGeneration(t *testing.T) {
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
 	leaked := false
-	app.WithSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
+	app.SetSessionLLMs(recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
 		if strings.HasPrefix(request.SystemPrompt, "You compact matrixclaw chat histories") {
 			return providers.Response{Text: "Earlier history summarized.", Model: "test-model", Provider: "recovery-test", Usage: providers.Usage{PromptTokens: 100, OutputTokens: 7}}, nil
 		}

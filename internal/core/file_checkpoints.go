@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/checkpoint"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/safego"
 	"github.com/Suren878/matrixclaw/internal/tools"
 	"github.com/Suren878/matrixclaw/internal/transcript"
@@ -22,13 +23,6 @@ const snapshotTimeout = time.Minute
 
 // restoreToolName labels the checkpoint a restore takes of the state it replaces.
 const restoreToolName = "restore"
-
-// WithCheckpoints snapshots working directories into store before tool
-// batches that change files; nil (the default) takes none.
-func (c *Core) WithCheckpoints(store *checkpoint.Store) *Core {
-	c.checkpoints = store
-	return c
-}
 
 // changesFiles reports whether a call may change files in the run's working
 // directory: a mutating file or shell tool, a child agent writing it, or a
@@ -231,7 +225,7 @@ func (c *Core) appendRestoreNote(ctx context.Context, cp FileCheckpoint, changes
 		return transcript.Message{}, err
 	}
 	note.Seq = seq
-	c.publishEvent(Event{Type: EventMessageCreated, SessionID: cp.SessionID, Payload: note})
+	c.publishEvent(events.Event{Type: EventMessageCreated, SessionID: cp.SessionID, Payload: note})
 	return note, nil
 }
 

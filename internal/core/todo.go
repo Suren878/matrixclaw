@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Suren878/matrixclaw/internal/agent/todo"
+	"github.com/Suren878/matrixclaw/internal/events"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
 
@@ -73,7 +74,7 @@ func (c *Core) saveSessionTodo(ctx context.Context, list todo.List) (todo.List, 
 	if err := c.store.SaveSessionTodo(ctx, list); err != nil {
 		return todo.List{}, err
 	}
-	c.publishEvent(Event{Type: EventTodoUpdated, SessionID: list.SessionID, Payload: list})
+	c.publishEvent(events.Event{Type: EventTodoUpdated, SessionID: list.SessionID, Payload: list})
 	return list, nil
 }
 
