@@ -13,4 +13,6 @@ type ServerStatus struct {
 	MemoryUsedBytes      uint64    `json:"memory_used_bytes"`
 	CPUUsedPercent       float64   `json:"cpu_used_percent"`
 	CPUKnown             bool      `json:"cpu_known"`
+	// Sandbox says how shell commands are confined (docs/SANDBOX.md).
+	Sandbox string `json:"sandbox,omitempty"`
 }

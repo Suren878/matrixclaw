@@ -17,6 +17,7 @@ import (
 
 	"github.com/Suren878/matrixclaw/internal/core"
 	"github.com/Suren878/matrixclaw/internal/providers"
+	"github.com/Suren878/matrixclaw/internal/sandbox"
 	"github.com/Suren878/matrixclaw/internal/setup"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
 	"github.com/Suren878/matrixclaw/internal/store"
@@ -231,7 +232,7 @@ func TestRecoveryKillsLeftoverShellTasksAndMarksThemLost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	process, err := shelltask.Start("sleep 60", session.WorkingDir, nil, out)
+	process, err := shelltask.Start("sleep 60", session.WorkingDir, nil, sandbox.Policy{}, out)
 	if err != nil {
 		t.Fatal(err)
 	}

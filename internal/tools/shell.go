@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/permission"
+	"github.com/Suren878/matrixclaw/internal/sandbox"
 )
 
 const (
@@ -151,6 +152,9 @@ func (e *bashExecutor) Execute(ctx context.Context, call Call) (Result, error) {
 		return Result{}, errShellUnavailable
 	}
 	result, err := e.tasks.RunCommand(ctx, call, command)
+	if errors.Is(err, sandbox.ErrUnavailable) {
+		return Result{Content: err.Error() + ". Tell the user; no command can run until they fix it.", Status: ResultStatusError}, nil
+	}
 	if err != nil {
 		return Result{}, fmt.Errorf("bash: %w", err)
 	}
@@ -196,6 +200,9 @@ func commandText(output string, result CommandResult, timeout time.Duration) str
 	}
 	if result.KilledLeftovers {
 		parts = append(parts, "Processes the command left running were killed; start servers and watchers with run_in_background: true.")
+	}
+	if result.SandboxHint != "" {
+		parts = append(parts, result.SandboxHint)
 	}
 	return strings.Join(parts, "\n\n")
 }

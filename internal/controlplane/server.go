@@ -104,6 +104,9 @@ func FormatServerStatusRows(status core.ServerStatus) []InfoRow {
 		rows = append(rows, InfoRow{Label: "Sys RAM", Value: formatBytes(status.MemoryUsedBytes) + " / " + formatBytes(status.MemoryAvailableBytes)})
 	}
 	rows = append(rows, InfoRow{Label: "CPU", Value: formatCPUUsedFree(status)})
+	if status.Sandbox != "" {
+		rows = append(rows, InfoRow{Label: "Sandbox", Value: status.Sandbox})
+	}
 	return rows
 }
 

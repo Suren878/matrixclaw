@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/safego"
+	"github.com/Suren878/matrixclaw/internal/sandbox"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
 	"github.com/Suren878/matrixclaw/internal/tools"
 )
@@ -61,7 +62,11 @@ func (c *Core) RunCommand(ctx context.Context, call tools.Call, command tools.Co
 	if c.commandEnv != nil {
 		env = c.commandEnv()
 	}
-	process, err := shelltask.Start(command.Command, command.WorkingDir, env, out)
+	var process *shelltask.Process
+	box, err := c.commandSandbox(ctx, call.SessionID, env)
+	if err == nil {
+		process, err = shelltask.Start(command.Command, command.WorkingDir, env, box, out)
+	}
 	if err != nil {
 		_ = out.Close()
 		_ = os.Remove(path)
@@ -89,13 +94,13 @@ func (c *Core) RunCommand(ctx context.Context, call tools.Call, command tools.Co
 		case <-process.Exited():
 			process.WaitOutput(foregroundWaitDelay)
 			// Nobody could stop what the command left running.
-			result, err := c.finishedCommand(process, command, false)
+			result, err := c.finishedCommand(process, command, box, false)
 			result.KilledLeftovers = process.KillLeftovers()
 			return result, err
 		case <-timeout.C:
 			_ = process.Stop(taskStopGrace)
 			process.WaitOutput(foregroundWaitDelay)
-			return c.finishedCommand(process, command, true)
+			return c.finishedCommand(process, command, box, true)
 		case <-background:
 			result, err := c.adoptCommand(ctx, call, command, id, process, process.StartedAt().Add(command.Timeout))
 			if !errors.Is(err, errBackgroundTasksFull) {
@@ -138,8 +143,9 @@ func (c *Core) sessionLiveTasksLocked(sessionID string) int {
 }
 
 // finishedCommand reads a foreground command's output, its head and tail when
-// longer than the call may return; only then is the file kept.
-func (c *Core) finishedCommand(process *shelltask.Process, command tools.Command, timedOut bool) (tools.CommandResult, error) {
+// longer than the call may return; only then is the file kept. A failure that
+// reads like box refused it gets a hint.
+func (c *Core) finishedCommand(process *shelltask.Process, command tools.Command, box sandbox.Policy, timedOut bool) (tools.CommandResult, error) {
 	path := process.Output().Path()
 	result := tools.CommandResult{ExitCode: process.ExitCode(), TimedOut: timedOut, StartedAt: process.StartedAt(), EndedAt: c.now()}
 	text, cut, err := shelltask.Excerpt(path, command.OutputLimit)
@@ -147,6 +153,9 @@ func (c *Core) finishedCommand(process *shelltask.Process, command tools.Command
 		return tools.CommandResult{}, err
 	}
 	result.Output = text
+	if result.ExitCode != 0 && !timedOut {
+		result.SandboxHint = box.DenialHint(text)
+	}
 	if cut {
 		result.OutputPath = path
 		return result, nil

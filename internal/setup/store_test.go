@@ -327,3 +327,24 @@ func TestSetupHooksAreValidatedOnLoad(t *testing.T) {
 		t.Fatalf("cfg = %+v, %+v, err = %v", cfg.Hooks, cfg.Diagnostics, err)
 	}
 }
+
+func TestSetupSandboxIsValidatedOnLoad(t *testing.T) {
+	for _, tc := range []struct{ sandbox, want string }{
+		{`{"mode": "danger_full_access"}`, `daemon.sandbox: mode is "danger_full_access"`},
+		{`{"writable": ["build"]}`, `daemon.sandbox: path "build"`},
+		{`{"mode": "workspace_write", "network": false, "caches": []}`, ``},
+	} {
+		path := filepath.Join(t.TempDir(), "setup.json")
+		file := `{"version": 4, "daemon": {"http_addr": "127.0.0.1:7777", "db_path": "/tmp/m.db", "sandbox": ` + tc.sandbox + `}, "clients": {"telegram": {"enabled": false}}}`
+		if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := NewFileStore(path).Load()
+		switch {
+		case tc.want == "" && (err != nil || cfg.Daemon.Sandbox.Caches == nil):
+			t.Errorf("load %s = %+v, %v", tc.sandbox, cfg.Daemon.Sandbox, err)
+		case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
+			t.Errorf("load error = %v, want %s", err, tc.want)
+		}
+	}
+}

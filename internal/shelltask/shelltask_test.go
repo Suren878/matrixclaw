@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Suren878/matrixclaw/internal/sandbox"
 	"github.com/Suren878/matrixclaw/internal/shelltask"
 )
 
@@ -112,7 +113,7 @@ func TestReadingInOrderGetsPastAHeadCutMidCharacter(t *testing.T) {
 
 func TestProcessRunsInItsOwnGroupAndReportsItsExitCode(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("echo out; echo err >&2; exit 3", t.TempDir(), nil, out)
+	p, err := shelltask.Start("echo out; echo err >&2; exit 3", t.TempDir(), nil, sandbox.Policy{}, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +130,7 @@ func TestProcessRunsInItsOwnGroupAndReportsItsExitCode(t *testing.T) {
 func startReady(t *testing.T, command string) *shelltask.Process {
 	t.Helper()
 	out := newOutput(t)
-	p, err := shelltask.Start(command, t.TempDir(), nil, out)
+	p, err := shelltask.Start(command, t.TempDir(), nil, sandbox.Policy{}, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +195,7 @@ func TestStopKillsACommandThatIgnoresTERM(t *testing.T) {
 
 func TestKillLeftoverChecksTheLeaderWithoutPS(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("sleep 60", t.TempDir(), nil, out)
+	p, err := shelltask.Start("sleep 60", t.TempDir(), nil, sandbox.Policy{}, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +232,7 @@ func TestKillLeftoverChecksTheLeaderWithoutPS(t *testing.T) {
 
 func TestKillLeftoverLeavesALeaderlessGroupAlone(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("sleep 60 & exit 0", t.TempDir(), nil, out)
+	p, err := shelltask.Start("sleep 60 & exit 0", t.TempDir(), nil, sandbox.Policy{}, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +309,7 @@ func TestAFailedCompactionLosesNoCount(t *testing.T) {
 
 func TestDoneWaitsForCommandsTheShellLeftRunning(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("(sleep 0.5; echo late) & echo early", t.TempDir(), nil, out)
+	p, err := shelltask.Start("(sleep 0.5; echo late) & echo early", t.TempDir(), nil, sandbox.Policy{}, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +332,7 @@ func TestDoneWaitsForCommandsTheShellLeftRunning(t *testing.T) {
 
 func TestWaitOutputStopsReadingAfterTheDelay(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("(sleep 30; echo late) & echo early", t.TempDir(), nil, out)
+	p, err := shelltask.Start("(sleep 30; echo late) & echo early", t.TempDir(), nil, sandbox.Policy{}, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +349,7 @@ func TestWaitOutputStopsReadingAfterTheDelay(t *testing.T) {
 func TestProcessGetsOnlyTheEnvironmentItIsGiven(t *testing.T) {
 	t.Setenv("SHELLTASK_TEST_SECRET", "sk-leak")
 	out := newOutput(t)
-	p, err := shelltask.Start("env", t.TempDir(), []string{"PATH=" + os.Getenv("PATH"), "VISIBLE=yes"}, out)
+	p, err := shelltask.Start("env", t.TempDir(), []string{"PATH=" + os.Getenv("PATH"), "VISIBLE=yes"}, sandbox.Policy{}, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +362,7 @@ func TestProcessGetsOnlyTheEnvironmentItIsGiven(t *testing.T) {
 
 func TestKillLeftoversEndsWhatTheShellLeftRunning(t *testing.T) {
 	out := newOutput(t)
-	p, err := shelltask.Start("sleep 60 >/dev/null 2>&1 & echo started", t.TempDir(), nil, out)
+	p, err := shelltask.Start("sleep 60 >/dev/null 2>&1 & echo started", t.TempDir(), nil, sandbox.Policy{}, out)
 	if err != nil {
 		t.Fatal(err)
 	}

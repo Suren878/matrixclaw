@@ -33,7 +33,9 @@ type RunContext struct {
 	Now            time.Time
 	Client         string
 	PermissionMode string
-	Git            *workspace.Git
+	// Sandbox says how bash commands are confined; empty when they are not.
+	Sandbox string
+	Git     *workspace.Git
 }
 
 // Text renders the run context.
@@ -47,6 +49,9 @@ func (r RunContext) Text() string {
 	}
 	if mode := permissionModeLine(r.PermissionMode); mode != "" {
 		lines = append(lines, mode)
+	}
+	if r.Sandbox != "" {
+		lines = append(lines, "- Shell sandbox: "+r.Sandbox)
 	}
 	if r.Git != nil {
 		lines = append(lines, gitLines(*r.Git)...)

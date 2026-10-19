@@ -42,8 +42,11 @@ func (c *Core) readRunFacts(ctx context.Context, turn nativeTurn) runFacts {
 		location = time.UTC
 	}
 	facts := runFacts{context: prompt.RunContext{Now: c.now().In(location)}}
-	if session, err := c.store.GetSession(ctx, turn.SessionID); err == nil && !turn.Readonly {
-		facts.context.PermissionMode = string(NormalizePermissionMode(string(session.PermissionMode)))
+	if session, err := c.store.GetSession(ctx, turn.SessionID); err == nil {
+		if !turn.Readonly {
+			facts.context.PermissionMode = string(NormalizePermissionMode(string(session.PermissionMode)))
+		}
+		facts.context.Sandbox = c.sandboxNote(session, turn.Readonly)
 	}
 	if run, err := c.store.GetRun(ctx, turn.RunID); err == nil && !turn.Subagent {
 		facts.context.Client = run.Client

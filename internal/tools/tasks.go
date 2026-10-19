@@ -30,7 +30,8 @@ type Command struct {
 // CommandResult is how a command ended, or the task it went on as (TaskID).
 // OutputPath names the file holding the whole output when Output was cut to
 // its head and tail. KilledLeftovers is set when processes the command left
-// running were killed after it ended.
+// running were killed after it ended. SandboxHint explains a failure that
+// reads like the shell sandbox refused it.
 type CommandResult struct {
 	TaskID          string
 	Output          string
@@ -38,6 +39,7 @@ type CommandResult struct {
 	ExitCode        int
 	TimedOut        bool
 	KilledLeftovers bool
+	SandboxHint     string
 	StartedAt       time.Time
 	EndedAt         time.Time
 }

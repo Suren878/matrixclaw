@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"github.com/Suren878/matrixclaw/internal/sandbox"
 )
 
 func RunCLI(ctx context.Context, stdout io.Writer, stderr io.Writer, binaryName string, args []string, run func(context.Context) error) int {
@@ -20,6 +22,8 @@ func RunCLI(ctx context.Context, stdout io.Writer, stderr io.Writer, binaryName 
 	}
 	if len(args) > 0 {
 		switch strings.TrimSpace(args[0]) {
+		case sandbox.HelperCommand:
+			return sandbox.RunHelper(args[1:])
 		case "-h", "--help", "help":
 			printDaemonUsage(stdout, binaryName)
 			return 0
