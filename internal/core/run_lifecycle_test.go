@@ -50,10 +50,10 @@ func (s runStatusStore) GetRun(_ context.Context, runID string) (Run, error) {
 
 // runEndWaiters counts the callers waiting for runs to end.
 func (c *Core) runEndWaiters() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.runEnds.mu.Lock()
+	defer c.runEnds.mu.Unlock()
 	n := 0
-	for _, waiters := range c.runEnds {
+	for _, waiters := range c.runEnds.waiters {
 		n += len(waiters)
 	}
 	return n
@@ -83,9 +83,9 @@ func TestARunEndWakesItsWaitersAndForgetsThem(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	c.beginRunEnd("run_child")
+	c.runEnds.begin("run_child")
 	store.status.Store(RunStatusCompleted)
-	c.endRunEnd("run_child")
+	c.runEnds.end("run_child")
 
 	for range 2 {
 		if err := <-done; err != nil {
@@ -100,7 +100,7 @@ func TestARunEndWakesItsWaitersAndForgetsThem(t *testing.T) {
 func TestAWaiterWaitsForWhatFollowsTheEndItSees(t *testing.T) {
 	t.Parallel()
 	c := New(Config{Store: statusStore(RunStatusCompleted)})
-	c.beginRunEnd("run_child")
+	c.runEnds.begin("run_child")
 	done := make(chan error, 1)
 	go func() { done <- c.waitRunEnd(context.Background(), "run_child") }()
 	for c.runEndWaiters() == 0 {
@@ -112,7 +112,7 @@ func TestAWaiterWaitsForWhatFollowsTheEndItSees(t *testing.T) {
 	case <-time.After(20 * time.Millisecond):
 	}
 
-	c.endRunEnd("run_child")
+	c.runEnds.end("run_child")
 
 	if err := <-done; err != nil {
 		t.Fatal(err)

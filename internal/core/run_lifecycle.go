@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/Suren878/matrixclaw/internal/agent"
@@ -53,8 +54,8 @@ func (c *Core) transition(ctx context.Context, run *Run, change runChange) error
 	from := run.Status
 	if change.To.Terminal() {
 		// Callers waiting for the end wait for its follow-up too.
-		c.beginRunEnd(run.ID)
-		defer c.endRunEnd(run.ID)
+		c.runEnds.begin(run.ID)
+		defer c.runEnds.end(run.ID)
 	}
 	reply, created, err := c.commitRun(ctx, run, change)
 	if err != nil {
@@ -370,57 +371,80 @@ func (c *Core) afterEnd(ctx context.Context, run Run) error {
 // waitRunEnd returns once the run has ended and what follows its end (its
 // subagent task's end among them) is done, or with ctx's error.
 func (c *Core) waitRunEnd(ctx context.Context, runID string) error {
-	for {
-		ended := make(chan struct{})
-		c.mu.Lock()
-		c.runEnds[runID] = append(c.runEnds[runID], ended)
-		c.mu.Unlock()
+	return c.runEnds.wait(ctx, runID, func(ctx context.Context) (bool, error) {
 		run, err := c.store.GetRun(ctx, runID)
-		c.mu.Lock()
-		done := err != nil || run.Status.Terminal() && c.runsEnding[runID] == 0
-		c.mu.Unlock()
+		return run.Status.Terminal(), err
+	})
+}
+
+// runEnds keeps the callers waiting for each run to end and counts each
+// run's ending transitions not followed up yet.
+type runEnds struct {
+	mu      sync.Mutex
+	waiters map[string][]chan struct{}
+	ending  map[string]int
+}
+
+// begin counts a transition that may end the run until end.
+func (e *runEnds) begin(runID string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ending == nil {
+		e.ending = map[string]int{}
+	}
+	e.ending[runID]++
+}
+
+// end ends what begin counted and, once no ending of the run is in progress,
+// wakes its waiters to look again.
+func (e *runEnds) end(runID string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ending[runID]--; e.ending[runID] > 0 {
+		return
+	}
+	delete(e.ending, runID)
+	for _, woken := range e.waiters[runID] {
+		close(woken)
+	}
+	delete(e.waiters, runID)
+}
+
+// wait returns once ended reports the run ended and no ending of it is in
+// progress, with ended's error, or with ctx's error.
+func (e *runEnds) wait(ctx context.Context, runID string, ended func(context.Context) (bool, error)) error {
+	for {
+		woken := make(chan struct{})
+		e.mu.Lock()
+		if e.waiters == nil {
+			e.waiters = map[string][]chan struct{}{}
+		}
+		e.waiters[runID] = append(e.waiters[runID], woken)
+		e.mu.Unlock()
+		done, err := ended(ctx)
+		e.mu.Lock()
+		done = err != nil || done && e.ending[runID] == 0
+		e.mu.Unlock()
 		if done {
-			c.forgetRunEnd(runID, ended)
+			e.forget(runID, woken)
 			return err
 		}
 		select {
-		case <-ended:
+		case <-woken:
 		case <-ctx.Done():
-			c.forgetRunEnd(runID, ended)
+			e.forget(runID, woken)
 			return ctx.Err()
 		}
 	}
 }
 
-// beginRunEnd counts a transition that may end the run until endRunEnd.
-func (c *Core) beginRunEnd(runID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.runsEnding[runID]++
-}
-
-// endRunEnd ends what beginRunEnd counted and, once no ending of the run is
-// in progress, wakes its waiters to look again.
-func (c *Core) endRunEnd(runID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.runsEnding[runID]--; c.runsEnding[runID] > 0 {
-		return
-	}
-	delete(c.runsEnding, runID)
-	for _, ended := range c.runEnds[runID] {
-		close(ended)
-	}
-	delete(c.runEnds, runID)
-}
-
-func (c *Core) forgetRunEnd(runID string, ended chan struct{}) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	waiters := slices.DeleteFunc(c.runEnds[runID], func(ch chan struct{}) bool { return ch == ended })
+func (e *runEnds) forget(runID string, woken chan struct{}) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	waiters := slices.DeleteFunc(e.waiters[runID], func(ch chan struct{}) bool { return ch == woken })
 	if len(waiters) == 0 {
-		delete(c.runEnds, runID)
+		delete(e.waiters, runID)
 		return
 	}
-	c.runEnds[runID] = waiters
+	e.waiters[runID] = waiters
 }
