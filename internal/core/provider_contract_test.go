@@ -227,16 +227,23 @@ func TestTheModelIsToldWhichModelItRunsOn(t *testing.T) {
 	t.Parallel()
 	app, db, cleanup := newCrashRecoveryCore(t)
 	defer cleanup()
-	var system string
-	app.SetSessionLLMs(labeledLLMs{recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, request providers.Request) (providers.Response, error) {
-		system = request.SystemPrompt
+	var request providers.Request
+	app.SetSessionLLMs(labeledLLMs{recoveryLLMs{runtime: generationRuntimeFunc(func(_ context.Context, sent providers.Request) (providers.Response, error) {
+		request = sent
 		return providers.Response{Text: "Done", StopReason: providers.StopEndTurn}, nil
 	})}})
 	_, run := saveCrashRecoveryRun(t, db, "which-model", core.RunStatusAccepted, false)
 	if err := app.ExecuteRun(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(system, "You are running on Foresko Inference, model gemma-4-26B-A4B.") {
-		t.Fatalf("system prompt does not name the model:\n%s", system)
+	const line = "- Model: you run on Foresko Inference, model gemma-4-26B-A4B."
+	if strings.Contains(request.SystemPrompt, "gemma-4-26B-A4B") {
+		t.Fatalf("the system prompt names the model, so a model switch loses its cache:\n%s", request.SystemPrompt)
 	}
+	for _, message := range request.Messages {
+		if strings.Contains(message.Content, line) {
+			return
+		}
+	}
+	t.Fatalf("no context note names the model: %+v", request.Messages)
 }

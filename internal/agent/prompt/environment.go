@@ -33,6 +33,8 @@ type RunContext struct {
 	Now            time.Time
 	Client         string
 	PermissionMode string
+	// Model names the provider and model the run talks to.
+	Model string
 	// Sandbox says how bash commands are confined; empty when they are not.
 	Sandbox string
 	Git     *workspace.Git
@@ -43,6 +45,11 @@ func (r RunContext) Text() string {
 	lines := []string{"Run context (as of the start of this run):"}
 	if !r.Now.IsZero() {
 		lines = append(lines, "- Today: "+r.Now.Format("Monday 2006-01-02")+", timezone "+timezoneName(r.Now)+".")
+	}
+	if r.Model != "" {
+		// A session can switch models, and small models repeat what the
+		// history says they are; the note sits next to the newest messages.
+		lines = append(lines, "- Model: you run on "+r.Model+". Earlier replies may have come from another model or named the wrong one; when asked which model you are, name this one.")
 	}
 	if client := clientLine(r.Client); client != "" {
 		lines = append(lines, client)

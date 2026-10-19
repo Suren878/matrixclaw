@@ -74,7 +74,7 @@ func TestGoldenPrompts(t *testing.T) {
 			Subagents(SubagentsInfo{Runtimes: []string{"matrixclaw"}, Background: 4, Steps: 100}),
 			Persona("Jarvis", "Answer like a pirate.", false),
 		),
-		"run_context": RunContext{Now: time.Date(2026, 10, 18, 14, 5, 0, 0, almaty), Client: "terminal:local", PermissionMode: "default", Git: git}.Text(),
+		"run_context": RunContext{Now: time.Date(2026, 10, 18, 14, 5, 0, 0, almaty), Client: "terminal:local", PermissionMode: "default", Model: "Anthropic, model claude-opus-5-5", Git: git}.Text(),
 	} {
 		t.Run(name, func(t *testing.T) { golden(t, name, text) })
 	}

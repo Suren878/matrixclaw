@@ -34,7 +34,7 @@ func (c *Core) readRunFacts(ctx context.Context, turn nativeTurn) runFacts {
 	if location == nil {
 		location = time.UTC
 	}
-	facts := runFacts{context: prompt.RunContext{Now: c.now().In(location)}}
+	facts := runFacts{context: prompt.RunContext{Now: c.now().In(location), Model: turn.Model}}
 	if session, err := c.store.GetSession(ctx, turn.SessionID); err == nil {
 		if !turn.Readonly {
 			facts.context.PermissionMode = string(NormalizePermissionMode(string(session.PermissionMode)))

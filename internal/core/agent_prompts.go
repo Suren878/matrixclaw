@@ -52,16 +52,6 @@ func (p *corePrompts) Context(ctx context.Context) string {
 	return prompt.JoinSections(sections...)
 }
 
-// modelPrompt tells the model what it runs on; a session can switch models, so
-// earlier replies in the history may come from another one. A model switch
-// changes the system prompt, which no cached prefix survives anyway.
-func modelPrompt(model string) string {
-	if model == "" {
-		return ""
-	}
-	return "You are running on " + model + ". Earlier replies in this conversation may have come from other models; when asked which model you are, name this one."
-}
-
 // memoryPrompt is the memory section of a run in workingDir; ok is false
 // when memory cannot be read, which is logged.
 func (c *Core) memoryPrompt(ctx context.Context, workingDir string) (string, bool) {
@@ -122,7 +112,7 @@ func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistan
 	if tools.Has("telephony_call") {
 		sections = append(sections, prompt.TelephonyCallGuidance())
 	}
-	sections = append(sections, modelPrompt(turn.Model), memory)
+	sections = append(sections, memory)
 	if !turn.Subagent {
 		sections = append(sections, c.nativeSkillsPrompt(ctx, turn, history))
 	}
