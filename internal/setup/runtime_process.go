@@ -48,7 +48,7 @@ func (m *systemdUserDaemonManager) startDirect(ctx context.Context, daemonBin st
 	select {
 	case exitErr := <-exited:
 		tail, _ := tailFile(logPath, 5)
-		return fmt.Errorf("matrixclawd exited at start (%v): %s", exitErr, strings.TrimSpace(tail))
+		return fmt.Errorf("matrixclawd exited at start (%w): %s", exitErr, strings.TrimSpace(tail))
 	default:
 		return fmt.Errorf("%w (log: %s)", err, logPath)
 	}

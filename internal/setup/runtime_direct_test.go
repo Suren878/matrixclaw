@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-type noSystemd struct{ commandRunner }
+type noSystemd struct{}
 
 func (noSystemd) Run(context.Context, string, ...string) error { return errNoSystemd }
 func (noSystemd) Output(context.Context, string, ...string) ([]byte, error) {
