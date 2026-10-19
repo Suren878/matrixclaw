@@ -92,6 +92,11 @@ done.
   (`sed -i`, `perl -i`) count as risky.
 - Skills installs run with a timeout, no prompts, the keyless environment and
   path checks.
+- Shell sandbox (`daemon.sandbox`, docs/SANDBOX.md): `full_auto` commands
+  may write only the working directory, its `.git`, temporary directories and
+  package caches; plan mode and read-only children run read-only. It uses
+  bubblewrap, Landlock or sandbox-exec, whichever works, and `/status` shows
+  which one or that none is available.
 
 ### Upgrade notes (breaking)
 
@@ -112,6 +117,9 @@ done.
   before the upgrade answer "Unknown command".
 - API: sessions lost `runtime_id` (use `kind`); new routes for checkpoints,
   hooks, goals and memory approval.
+- `full_auto` sessions are confined by the shell sandbox as soon as the host
+  supports it; a session working in `~` can then write only temporary
+  directories and caches. Set `daemon.sandbox.mode` to `off` to opt out.
 
 ## v0.2.0
 
