@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.2
 
 - Telegram: a reference cache an older version saved is removed once instead
   of being reported on every start.
