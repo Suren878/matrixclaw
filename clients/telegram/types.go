@@ -195,6 +195,14 @@ type SendDocumentRequest struct {
 	MIMEType string
 }
 
+type SendPhotoRequest struct {
+	ChatID   int64
+	Photo    []byte
+	FileName string
+	Caption  string
+	MIMEType string
+}
+
 type SentMessage struct {
 	MessageID int64     `json:"message_id"`
 	Voice     *Voice    `json:"voice,omitempty"`

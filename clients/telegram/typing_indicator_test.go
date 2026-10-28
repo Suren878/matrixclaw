@@ -104,6 +104,9 @@ func (a *recordingBotAPI) SendAudio(context.Context, SendAudioRequest) (SentMess
 func (a *recordingBotAPI) SendDocument(context.Context, SendDocumentRequest) (SentMessage, error) {
 	return SentMessage{}, nil
 }
+func (a *recordingBotAPI) SendPhoto(context.Context, SendPhotoRequest) (SentMessage, error) {
+	return SentMessage{}, nil
+}
 func (a *recordingBotAPI) EditMessageText(context.Context, EditMessageTextRequest) (EditMessageTextResponse, error) {
 	return EditMessageTextResponse{}, nil
 }

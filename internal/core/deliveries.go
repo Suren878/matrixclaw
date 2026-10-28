@@ -38,6 +38,8 @@ type DocumentDeliveryPayload struct {
 	Caption     string `json:"caption,omitempty"`
 	MIMEType    string `json:"mime_type,omitempty"`
 	Size        int64  `json:"size,omitempty"`
+	// Photo shows an image inline where the client can; else it is a document.
+	Photo bool `json:"photo,omitempty"`
 }
 
 func (c *Core) CreateClientDelivery(ctx context.Context, delivery ClientDelivery) (ClientDelivery, error) {

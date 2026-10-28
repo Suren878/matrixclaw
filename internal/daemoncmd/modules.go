@@ -16,6 +16,7 @@ import (
 	browsermodule "github.com/Suren878/matrixclaw/internal/modules/browser"
 	deliverymodule "github.com/Suren878/matrixclaw/internal/modules/delivery"
 	"github.com/Suren878/matrixclaw/internal/modules/geo"
+	imagemodule "github.com/Suren878/matrixclaw/internal/modules/image"
 	"github.com/Suren878/matrixclaw/internal/modules/localruntime"
 	mcpmodule "github.com/Suren878/matrixclaw/internal/modules/mcp"
 	skillsmodule "github.com/Suren878/matrixclaw/internal/modules/skills"
@@ -75,6 +76,7 @@ func buildModules(deps moduleDeps) (daemonModules, error) {
 		modules.Static("delivery", "File delivery", deliverymodule.NewSendFileTool(deps.storage.Store(), app)),
 		modules.Static("geo", "Maps", geo.NewOSMGeoExecutors(deps.geo)...),
 		webmodule.New(),
+		imagemodule.New(deps.storage.Store(), app),
 		tts,
 		stt,
 		deps.realtime,

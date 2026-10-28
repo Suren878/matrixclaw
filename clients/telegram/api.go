@@ -28,6 +28,7 @@ type BotAPI interface {
 	SendVoice(ctx context.Context, req SendVoiceRequest) (SentMessage, error)
 	SendAudio(ctx context.Context, req SendAudioRequest) (SentMessage, error)
 	SendDocument(ctx context.Context, req SendDocumentRequest) (SentMessage, error)
+	SendPhoto(ctx context.Context, req SendPhotoRequest) (SentMessage, error)
 	EditMessageText(ctx context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error)
 	EditMessageMedia(ctx context.Context, req EditMessageMediaRequest) (EditMessageMediaResponse, error)
 	AnswerCallbackQuery(ctx context.Context, req AnswerCallbackQueryRequest) error
@@ -205,6 +206,20 @@ func (c *Client) SendDocument(ctx context.Context, req SendDocumentRequest) (Sen
 		fileName = "document"
 	}
 	return callMultipartAPI[SentMessage](ctx, c, "sendDocument", fields, "document", fileName, req.MIMEType, req.Document)
+}
+
+func (c *Client) SendPhoto(ctx context.Context, req SendPhotoRequest) (SentMessage, error) {
+	fields := map[string]string{
+		"chat_id": strconv.FormatInt(req.ChatID, 10),
+	}
+	if caption := strings.TrimSpace(req.Caption); caption != "" {
+		fields["caption"] = caption
+	}
+	fileName := strings.TrimSpace(req.FileName)
+	if fileName == "" {
+		fileName = "image.png"
+	}
+	return callMultipartAPI[SentMessage](ctx, c, "sendPhoto", fields, "photo", fileName, req.MIMEType, req.Photo)
 }
 
 func (c *Client) EditMessageText(ctx context.Context, req EditMessageTextRequest) (EditMessageTextResponse, error) {

@@ -22,6 +22,7 @@ type deliveryTestAPI struct {
 	attemptedChats []int64
 	guests         []AnswerGuestQueryRequest
 	documents      []SendDocumentRequest
+	photos         []SendPhotoRequest
 	cancel         context.CancelFunc
 }
 
@@ -45,6 +46,11 @@ func (a *deliveryTestAPI) AnswerGuestQuery(_ context.Context, req AnswerGuestQue
 func (a *deliveryTestAPI) SendDocument(_ context.Context, req SendDocumentRequest) (SentMessage, error) {
 	a.documents = append(a.documents, req)
 	return SentMessage{MessageID: 99}, nil
+}
+
+func (a *deliveryTestAPI) SendPhoto(_ context.Context, req SendPhotoRequest) (SentMessage, error) {
+	a.photos = append(a.photos, req)
+	return SentMessage{MessageID: 98}, nil
 }
 
 type deliveryTestDaemon struct {
@@ -272,6 +278,24 @@ func TestDocumentRetriesStorageAndAcknowledgementWithoutResending(t *testing.T) 
 	defer d.mu.Unlock()
 	if d.storageReads != 2 || !d.acked["doc"] || len(d.failed) != 0 {
 		t.Fatalf("storage reads=%d acked=%v failed=%v", d.storageReads, d.acked, d.failed)
+	}
+}
+
+func TestPhotoDeliverySendsPhoto(t *testing.T) {
+	now := time.Unix(100, 0)
+	d := &deliveryTestDaemon{deliveries: []core.ClientDelivery{{ID: "img", Type: core.ClientDeliveryTypeDocument, Address: encodeDeliveryAddress(DeliveryAddress{ChatID: 1}), Payload: json.RawMessage(`{"storage_path":"result.txt","photo":true,"mime_type":"image/png"}`)}}}
+	api := &deliveryTestAPI{}
+	w := newDeliveryTestWorker(t, d, api, &now)
+	if err := w.deliverPending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.photos) != 1 || len(api.documents) != 0 || string(api.photos[0].Photo) != "hello" || api.photos[0].MIMEType != "image/png" {
+		t.Fatalf("photos=%+v documents=%+v", api.photos, api.documents)
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.acked["img"] {
+		t.Fatal("photo delivery not acknowledged")
 	}
 }
 

@@ -53,6 +53,14 @@ func VoiceOutputGuidance() string {
 	return "Voice output:\n- When the user asks for spoken, audio, voice, or TTS output, call the text_to_speech tool with the text that should be spoken.\n- Do not use shell commands, Piper runtime inspection, or local audio files for client voice output.\n- After a successful text_to_speech tool call, send follow-up text only when the user explicitly asked for a written answer or an explanation. Otherwise, do not send a confirmation message."
 }
 
+// ImageGenerationGuidance is the guidance for generate_image.
+func ImageGenerationGuidance() string {
+	return strings.TrimSpace(`Image generation:
+- When the user asks to draw, generate or create a picture, call generate_image; do not write scripts or use the shell to make images.
+- Write the prompt in English and make it specific: subject, style, composition, lighting. Keep text that must appear in the image in the user's language, in quotes.
+- In Telegram the image is already sent to the chat: do not send it again with send_file and do not describe it at length; one short line is enough.`)
+}
+
 // FileDeliveryGuidance is the guidance for sending files via send_file.
 func FileDeliveryGuidance() string {
 	return strings.TrimSpace(`File delivery:

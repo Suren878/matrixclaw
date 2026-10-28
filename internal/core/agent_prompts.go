@@ -106,6 +106,9 @@ func (c *Core) nativeSystemPrompt(ctx context.Context, turn nativeTurn, assistan
 	if tools.Has("text_to_speech") {
 		sections = append(sections, prompt.VoiceOutputGuidance())
 	}
+	if tools.Has("generate_image") {
+		sections = append(sections, prompt.ImageGenerationGuidance())
+	}
 	if tools.Has("send_file") {
 		sections = append(sections, prompt.FileDeliveryGuidance())
 	}

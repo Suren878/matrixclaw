@@ -122,6 +122,7 @@ type ModulesConfig struct {
 	Telephony      TelephonyConfig                `json:"telephony,omitempty"`
 	Browser        BrowserConfig                  `json:"browser,omitempty"`
 	WebSearch      WebSearchConfig                `json:"web_search,omitempty"`
+	Image          ImageConfig                    `json:"image,omitzero"`
 	MCP            MCPConfig                      `json:"mcp,omitempty"`
 	Skills         SkillsConfig                   `json:"skills,omitempty"`
 }
@@ -274,6 +275,15 @@ type WebSearchConfig struct {
 	TavilyKey string `json:"tavily_key,omitempty"`
 	SerperKey string `json:"serper_key,omitempty"`
 	BaseURL   string `json:"base_url,omitempty"`
+}
+
+// ImageConfig picks the configured provider and model that generate images;
+// the provider's key and base URL are used as they are.
+type ImageConfig struct {
+	Enabled  bool   `json:"enabled,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Size     string `json:"size,omitempty"`
 }
 
 const (

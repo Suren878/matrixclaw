@@ -50,7 +50,7 @@ flowchart LR
 | `internal/hooks` | user hooks (Claude Code protocol) and the checks after edits (see [HOOKS.md](HOOKS.md)) |
 | `internal/lsp` | language servers: JSON-RPC client, one server per language and project root, diagnostics after edits, the `lsp` tool (see [LSP.md](LSP.md)) |
 | `internal/webtools` | `web_search` and `web_fetch` |
-| `internal/modules` | module lifecycle, settings contract, and the modules: `storage`, `delivery`, `geo`, `web`, `voice` (+ `voice/realtime`), `telephony`, `browser`, `mcp`, `skills`; `localruntime` holds local voice/browser runtimes |
+| `internal/modules` | module lifecycle, settings contract, and the modules: `storage`, `delivery`, `geo`, `web`, `image`, `voice` (+ `voice/realtime`), `telephony`, `browser`, `mcp`, `skills`; `localruntime` holds local voice/browser runtimes |
 | `internal/procsup` | supervised local helper processes (voice and language servers) |
 | `internal/providers` | provider adapters (`ai/*`), catalog, model metadata, wire quirks |
 | `internal/sessionllm` | the provider runtimes sessions pick from |

@@ -14,7 +14,10 @@ import (
 	"github.com/Suren878/matrixclaw/internal/transcript"
 )
 
-const maxTelegramDocumentBytes int64 = 50 << 20
+const (
+	maxTelegramDocumentBytes int64 = 50 << 20
+	maxTelegramPhotoBytes    int64 = 10 << 20
+)
 
 func (w *Worker) deliverPendingRun(ctx context.Context, target chatTarget, sessionID string, runID string) error {
 	sessionID = strings.TrimSpace(sessionID)
@@ -287,19 +290,7 @@ func (w *Worker) deliverDocument(ctx context.Context, delivery core.ClientDelive
 	if int64(len(content)) > maxTelegramDocumentBytes {
 		return w.failDocumentDelivery(ctx, target, delivery, fmt.Sprintf("file is too large: %d bytes", len(content)))
 	}
-	if err := w.api.SendChatAction(ctx, SendChatActionRequest{
-		ChatID: target.chatID,
-		Action: "upload_document",
-	}); err != nil {
-		log.Printf("telegram: upload_document indicator failed: %v", err)
-	}
-	sent, err := w.api.SendDocument(ctx, SendDocumentRequest{
-		ChatID:   target.chatID,
-		Document: content,
-		FileName: fileName,
-		Caption:  telegramDocumentCaption(payload.Caption),
-		MIMEType: mimeType,
-	})
+	sent, err := w.sendDeliveryFile(ctx, target.chatID, payload, content, fileName, mimeType)
 	if err != nil {
 		if ctx.Err() != nil {
 			return err
@@ -322,6 +313,23 @@ func (w *Worker) failDocumentDelivery(ctx context.Context, target chatTarget, de
 		_ = w.sendText(ctx, target, "File delivery failed: "+message+".")
 	}
 	return w.daemon(target.externalKey).FailClientDelivery(ctx, delivery.ID, message)
+}
+
+// sendDeliveryFile sends a photo delivery as a photo while Telegram takes it,
+// and anything else, or a larger photo, as a document.
+func (w *Worker) sendDeliveryFile(ctx context.Context, chatID int64, payload core.DocumentDeliveryPayload, content []byte, fileName, mimeType string) (SentMessage, error) {
+	photo := payload.Photo && int64(len(content)) <= maxTelegramPhotoBytes
+	action := "upload_document"
+	if photo {
+		action = "upload_photo"
+	}
+	if err := w.api.SendChatAction(ctx, SendChatActionRequest{ChatID: chatID, Action: action}); err != nil {
+		log.Printf("telegram: %s indicator failed: %v", action, err)
+	}
+	if photo {
+		return w.api.SendPhoto(ctx, SendPhotoRequest{ChatID: chatID, Photo: content, FileName: fileName, Caption: telegramDocumentCaption(payload.Caption), MIMEType: mimeType})
+	}
+	return w.api.SendDocument(ctx, SendDocumentRequest{ChatID: chatID, Document: content, FileName: fileName, Caption: telegramDocumentCaption(payload.Caption), MIMEType: mimeType})
 }
 
 func (w *Worker) readDeliveryDocument(ctx context.Context, target chatTarget, payload core.DocumentDeliveryPayload) ([]byte, string, string, error) {
