@@ -84,7 +84,7 @@ func TestToProviderMessagesDoesNotFailForExpiredRasterImage(t *testing.T) {
 	if len(messages[0].Images) != 0 {
 		t.Fatalf("inline images = %d, want 0", len(messages[0].Images))
 	}
-	for _, want := range []string{`temp_path="telegram/images/expired.png"`, "Unavailable attachments:", "file is no longer available"} {
+	for _, want := range []string{`temp_path="telegram/images/expired.png"`, "Attachment notes:", "file is no longer available"} {
 		if !strings.Contains(messages[0].Content, want) {
 			t.Errorf("content = %q, want %q", messages[0].Content, want)
 		}

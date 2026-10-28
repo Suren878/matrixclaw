@@ -418,7 +418,7 @@ func toolResultMessage(message transcript.Message) (providers.Message, bool) {
 }
 
 func unsupportedModelImageWarning(part transcript.ImagePart) string {
-	return "Image attachment " + imagePartLabel(part) + " was not sent because the selected model does not support image input."
+	return "Image attachment " + imagePartLabel(part) + " is not shown to you because the selected model does not support image input; the file is still in storage, and tools that take its path can use it."
 }
 
 func messageReasoningContent(parts []transcript.MessagePart) *string {
@@ -657,7 +657,7 @@ func messageContentWithAttachmentWarnings(content string, warnings []string) str
 	if len(warnings) == 0 {
 		return strings.TrimSpace(content)
 	}
-	block := "Unavailable attachments:\n" + strings.Join(warnings, "\n")
+	block := "Attachment notes:\n" + strings.Join(warnings, "\n")
 	if content = strings.TrimSpace(content); content == "" {
 		return block
 	}
