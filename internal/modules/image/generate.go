@@ -8,7 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
+	"path"
 	"strings"
 	"time"
 
@@ -23,6 +26,7 @@ const (
 	// Local models take a minute or more for a large image.
 	requestTimeout       = 5 * time.Minute
 	maxImageBytes  int64 = 50 << 20
+	maxInputImages       = 4
 )
 
 type generateTool struct {
@@ -30,14 +34,21 @@ type generateTool struct {
 }
 
 type generateInput struct {
-	Prompt string `json:"prompt"`
-	Size   string `json:"size"`
+	Prompt string   `json:"prompt"`
+	Size   string   `json:"size,omitempty"`
+	Images []string `json:"images,omitempty"`
+}
+
+// inputImage is an image the call edits or takes as a reference.
+type inputImage struct {
+	name, mimeType string
+	data           []byte
 }
 
 func (t *generateTool) Spec() tools.Spec {
 	return tools.Spec{
 		ID:          GenerateToolID,
-		Description: "Generate an image from a text description. The image is saved to MatrixClaw temporary storage, and in a Telegram chat it is also sent to the chat as a photo.",
+		Description: "Generate an image from a text description, or edit existing images: pass their storage paths in images (a photo the user attached, an image generated earlier). The result is saved to MatrixClaw temporary storage, and in a Telegram chat it is also sent to the chat as a photo.",
 		Effect:      tools.EffectMutation,
 		Asks:        true,
 		Namespace:   "module.image",
@@ -45,8 +56,9 @@ func (t *generateTool) Spec() tools.Spec {
 		InputJSONSchema: json.RawMessage(`{
   "type": "object",
   "properties": {
-    "prompt": {"type": "string", "description": "What the image shows: subject, style, composition, lighting, any text it contains."},
-    "size": {"type": "string", "description": "Optional WIDTHxHEIGHT, such as 1024x1024 or 1536x1024; omit for the configured size."}
+    "prompt": {"type": "string", "description": "What the image shows: subject, style, composition, lighting, any text it contains. With images: what to change and what to keep."},
+    "size": {"type": "string", "description": "Optional WIDTHxHEIGHT, such as 1024x1024 or 1536x1024; omit for the configured size."},
+    "images": {"type": "array", "items": {"type": "string"}, "maxItems": 4, "description": "Optional storage paths (temp_path or storage_path) of images to edit or use as references, the first being the one edited."}
   },
   "required": ["prompt"],
   "additionalProperties": false
@@ -63,8 +75,12 @@ func (t *generateTool) Preview(_ context.Context, call tools.Call) (tools.Approv
 	if err != nil {
 		return tools.ApprovalRequest{}, err
 	}
+	action := "Generate an image"
+	if len(input.Images) > 0 {
+		action = fmt.Sprintf("Edit %d image(s)", len(input.Images))
+	}
 	return tools.ApprovalRequest{
-		Description: fmt.Sprintf("Generate an image with %s on %s.", endpoint.model, endpoint.providerName),
+		Description: fmt.Sprintf("%s with %s on %s.", action, endpoint.model, endpoint.providerName),
 		Params:      input,
 	}, nil
 }
@@ -78,7 +94,16 @@ func (t *generateTool) Execute(ctx context.Context, call tools.Call) (tools.Resu
 	if err != nil {
 		return tools.Result{Content: "Image generation is unavailable: " + err.Error(), Status: tools.ResultStatusError}, nil
 	}
-	data, err := generate(ctx, endpoint, input)
+	images, err := t.readImages(input.Images)
+	if err != nil {
+		return tools.Result{Content: err.Error(), Status: tools.ResultStatusError}, nil
+	}
+	var data []byte
+	if len(images) > 0 {
+		data, err = edit(ctx, endpoint, input, images)
+	} else {
+		data, err = generate(ctx, endpoint, input)
+	}
 	if err != nil {
 		return tools.Result{Content: "Image generation failed: " + err.Error(), Status: tools.ResultStatusError}, nil
 	}
@@ -102,6 +127,32 @@ func (t *generateTool) Execute(ctx context.Context, call tools.Call) (tools.Resu
 		metadata["delivery_id"] = delivery.ID
 	}
 	return tools.Result{Content: content, Metadata: metadata, MIMEType: mimeType, Status: tools.ResultStatusSuccess}, nil
+}
+
+// readImages reads each path from temporary storage, else from saved storage.
+func (t *generateTool) readImages(paths []string) ([]inputImage, error) {
+	images := make([]inputImage, 0, len(paths))
+	for _, raw := range paths {
+		var name, mimeType string
+		temp, data, err := t.module.store.ReadTemporaryBytes(raw)
+		if err == nil {
+			name, mimeType = temp.Path, temp.MIMEType
+		} else {
+			saved, savedData, savedErr := t.module.store.ReadBytes(raw, maxImageBytes)
+			if savedErr != nil {
+				return nil, fmt.Errorf("image %s is not in storage: %w", raw, errors.Join(err, savedErr))
+			}
+			name, mimeType, data = saved.Path, saved.MIMEType, savedData
+		}
+		if sniffed := http.DetectContentType(data); strings.HasPrefix(sniffed, "image/") {
+			mimeType = sniffed
+		}
+		if !strings.HasPrefix(mimeType, "image/") {
+			return nil, fmt.Errorf("%s is %s, not an image", raw, mimeType)
+		}
+		images = append(images, inputImage{name: path.Base(name), mimeType: mimeType, data: data})
+	}
+	return images, nil
 }
 
 func (t *generateTool) deliver(ctx context.Context, call tools.Call, path, mimeType string, size int64) (core.ClientDelivery, error) {
@@ -133,20 +184,20 @@ func readInput(call tools.Call) (generateInput, error) {
 		return generateInput{}, fmt.Errorf("%w: %w", tools.ErrInvalidArgs, err)
 	}
 	input.Prompt, input.Size = strings.TrimSpace(input.Prompt), strings.TrimSpace(input.Size)
-	if input.Prompt == "" {
+	input.Images = textutil.NonBlank(input.Images...)
+	switch {
+	case input.Prompt == "":
 		return generateInput{}, fmt.Errorf("%w: prompt is required", tools.ErrInvalidArgs)
-	}
-	if input.Size != "" && input.Size != "auto" && !sizePattern.MatchString(input.Size) {
+	case input.Size != "" && input.Size != "auto" && !sizePattern.MatchString(input.Size):
 		return generateInput{}, fmt.Errorf("%w: size is WIDTHxHEIGHT, such as 1024x1024", tools.ErrInvalidArgs)
+	case len(input.Images) > maxInputImages:
+		return generateInput{}, fmt.Errorf("%w: at most %d images", tools.ErrInvalidArgs, maxInputImages)
 	}
 	return input, nil
 }
 
-// generate asks for one image and returns its bytes, whether the provider
-// answers with base64 or with a URL to download.
+// generate asks the generations endpoint for one image.
 func generate(ctx context.Context, endpoint endpoint, input generateInput) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
-	defer cancel()
 	request := map[string]any{"model": endpoint.model, "prompt": input.Prompt, "n": 1}
 	if size := textutil.FirstNonEmpty(input.Size, endpoint.size); size != "" {
 		request["size"] = size
@@ -155,11 +206,61 @@ func generate(ctx context.Context, endpoint endpoint, input generateInput) ([]by
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.url, bytes.NewReader(body))
+	return send(ctx, endpoint, "/images/generations", "application/json", body)
+}
+
+// edit sends the images to the edits endpoint as a multipart form, one
+// "image" field, or "image[]" fields for several.
+func edit(ctx context.Context, endpoint endpoint, input generateInput, images []inputImage) ([]byte, error) {
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	fields := map[string]string{"model": endpoint.model, "prompt": input.Prompt, "n": "1"}
+	if size := textutil.FirstNonEmpty(input.Size, endpoint.size); size != "" {
+		fields["size"] = size
+	}
+	for key, value := range fields {
+		if err := form.WriteField(key, value); err != nil {
+			return nil, err
+		}
+	}
+	field := "image"
+	if len(images) > 1 {
+		field = "image[]"
+	}
+	for _, image := range images {
+		header := textproto.MIMEHeader{}
+		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, field, image.name))
+		header.Set("Content-Type", image.mimeType)
+		part, err := form.CreatePart(header)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := part.Write(image.data); err != nil {
+			return nil, err
+		}
+	}
+	if err := form.Close(); err != nil {
+		return nil, err
+	}
+	data, err := send(ctx, endpoint, "/images/edits", form.FormDataContentType(), body.Bytes())
+	if errors.Is(err, errNoEndpoint) {
+		return nil, fmt.Errorf("%s does not edit images: it has no %s/images/edits endpoint", endpoint.providerName, endpoint.base)
+	}
+	return data, err
+}
+
+var errNoEndpoint = errors.New("endpoint not found")
+
+// send posts to the images API and returns the first image, whether the
+// provider answers with base64 or with a URL to download.
+func send(ctx context.Context, endpoint endpoint, path, contentType string, body []byte) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.base+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	if endpoint.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+endpoint.apiKey)
 	}
@@ -179,15 +280,18 @@ func generate(ctx context.Context, endpoint endpoint, input generateInput) ([]by
 		} `json:"data"`
 		Error *struct {
 			Message string `json:"message"`
-			Code    any    `json:"code"`
 		} `json:"error"`
 	}
 	decodeErr := json.Unmarshal(raw, &answer)
 	if resp.StatusCode/100 != 2 {
+		message := textutil.Clip(strings.TrimSpace(string(raw)), 300, "…")
 		if answer.Error != nil && answer.Error.Message != "" {
-			return nil, fmt.Errorf("%s: %s", resp.Status, answer.Error.Message)
+			message = answer.Error.Message
 		}
-		return nil, fmt.Errorf("%s: %s", resp.Status, textutil.Clip(strings.TrimSpace(string(raw)), 300, "…"))
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("%w: %s: %s", errNoEndpoint, resp.Status, message)
+		}
+		return nil, fmt.Errorf("%s: %s", resp.Status, message)
 	}
 	if decodeErr != nil {
 		return nil, fmt.Errorf("unreadable answer: %w", decodeErr)

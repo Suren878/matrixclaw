@@ -31,10 +31,19 @@ In setup.json:
 ## `generate_image`
 
 ```text
-prompt  what the image shows (required)
+prompt  what the image shows, or what to change (required)
 size    optional WIDTHxHEIGHT for this image
+images  optional storage paths of up to 4 images to edit or use as references
 ```
 
+- Without `images` the call goes to `images/generations` and draws from
+  scratch. With them it goes to `images/edits` as a multipart form (`image`,
+  or `image[]` for several), the way the OpenAI API takes edits. A provider
+  without that endpoint answers with an error saying so; the assistant does not
+  fall back to drawing from scratch.
+- Paths are read from temporary storage, else from saved storage, so a photo
+  the user attached in Telegram or an image generated earlier can be edited by
+  a chat model that cannot see images itself.
 - Each call asks for approval unless a permission rule allows it
   (`generate_image` in `/permissions`).
 - One image per call. The answer may carry base64 or a URL; a URL is

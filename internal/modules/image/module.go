@@ -22,6 +22,8 @@ const ModuleID = "image"
 
 type imageStore interface {
 	SaveTemporary(rawPath string, content []byte, title string, tags []string, mimeType string) (localstorage.TempEntry, error)
+	ReadTemporaryBytes(rawPath string) (localstorage.TempEntry, []byte, error)
+	ReadBytes(rawPath string, maxBytes int64) (localstorage.Entry, []byte, error)
 }
 
 type deliveryCreator interface {
@@ -83,8 +85,8 @@ func (m *Module) Status(context.Context) modules.Status {
 // endpoint is where the module sends requests now; an error says what is
 // missing while the module is on.
 type endpoint struct {
-	providerID, providerName string
-	url, apiKey, model, size string
+	providerID, providerName  string
+	base, apiKey, model, size string
 }
 
 func (m *Module) endpoint() (endpoint, error) {
@@ -98,7 +100,7 @@ func (m *Module) endpoint() (endpoint, error) {
 		return endpoint{}, fmt.Errorf("pick a provider")
 	}
 	runtime, hasKey := provider.Runtime()
-	url, ok := imagesURL(runtime)
+	base, ok := imagesBase(runtime)
 	switch {
 	case !ok:
 		return endpoint{}, fmt.Errorf("%s has no images endpoint", runtime.Name)
@@ -110,7 +112,7 @@ func (m *Module) endpoint() (endpoint, error) {
 	return endpoint{
 		providerID:   runtime.ID,
 		providerName: runtime.Name,
-		url:          url,
+		base:         base,
 		apiKey:       runtime.APIKey,
 		model:        strings.TrimSpace(cfg.Model),
 		size:         strings.TrimSpace(cfg.Size),
@@ -127,18 +129,19 @@ func findProvider(configured []setup.ProviderConfig, id string) (setup.ProviderC
 	return setup.ProviderConfig{}, false
 }
 
-// imagesURL is the provider's OpenAI-compatible images endpoint; Gemini
-// serves one under its openai path. Other provider types have none.
-func imagesURL(provider setup.ProviderConfig) (string, bool) {
+// imagesBase is where the provider serves the OpenAI images API
+// (images/generations, images/edits); Gemini serves it under its openai
+// path. Other provider types have none.
+func imagesBase(provider setup.ProviderConfig) (string, bool) {
 	base := strings.TrimRight(strings.TrimSpace(provider.BaseURL), "/")
 	if base == "" {
 		return "", false
 	}
 	switch providers.NormalizeOptionalProviderType(provider.Type) {
 	case providers.TypeOpenAICompat:
-		return base + "/images/generations", true
+		return base, true
 	case providers.TypeGemini:
-		return base + "/openai/images/generations", true
+		return base + "/openai", true
 	default:
 		return "", false
 	}
@@ -150,7 +153,7 @@ func (m *Module) Settings(ctx context.Context) []modules.Item {
 	provider := modules.Item{Key: "provider", Kind: modules.ItemChoice, Label: "Provider", Value: cfg.Provider, Display: "Not set"}
 	for _, configured := range current.providers {
 		runtime, _ := configured.Runtime()
-		if _, ok := imagesURL(runtime); ok {
+		if _, ok := imagesBase(runtime); ok {
 			provider.Options = append(provider.Options, modules.Option{Value: runtime.ID, Label: runtime.Name})
 			if runtime.ID == cfg.Provider {
 				provider.Display = runtime.Name
@@ -215,7 +218,7 @@ func (m *Module) Change(_ context.Context, path []string, value string) (modules
 			return modules.Change{}, fmt.Errorf("%w: unknown provider %q", modules.ErrInvalidSetting, value)
 		}
 		runtime, _ := provider.Runtime()
-		if _, ok := imagesURL(runtime); !ok {
+		if _, ok := imagesBase(runtime); !ok {
 			return modules.Change{}, fmt.Errorf("%w: %s has no images endpoint", modules.ErrInvalidSetting, runtime.Name)
 		}
 		change := modules.Change{Config: func(c *setup.Config) error {

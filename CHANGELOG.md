@@ -4,7 +4,8 @@
 
 - Image generation: the `image` module adds `generate_image`, which draws
   through a configured provider's OpenAI-compatible images endpoint; in
-  Telegram the image is sent as a photo. See docs/IMAGES.md.
+  Telegram the image is sent as a photo. With `images` it edits attached or
+  earlier images through `images/edits`. See docs/IMAGES.md.
 
 ## v0.2.2
 

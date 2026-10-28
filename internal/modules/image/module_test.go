@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,6 +20,18 @@ import (
 var pngBytes = []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
 
 type fakeStore struct{ saved map[string][]byte }
+
+func (s *fakeStore) ReadTemporaryBytes(path string) (localstorage.TempEntry, []byte, error) {
+	data, ok := s.saved[path]
+	if !ok {
+		return localstorage.TempEntry{}, nil, localstorage.ErrNotFound
+	}
+	return localstorage.TempEntry{Path: path, MIMEType: "image/png"}, data, nil
+}
+
+func (s *fakeStore) ReadBytes(path string, _ int64) (localstorage.Entry, []byte, error) {
+	return localstorage.Entry{}, nil, localstorage.ErrNotFound
+}
 
 func (s *fakeStore) SaveTemporary(path string, content []byte, title string, _ []string, mimeType string) (localstorage.TempEntry, error) {
 	s.saved[path] = content
@@ -130,5 +143,44 @@ func TestToolsAndProvidersFollowSettings(t *testing.T) {
 	}
 	if len(m.Tools()) != 0 {
 		t.Fatal("tool offered while the module is off")
+	}
+}
+
+func TestEditSendsImagesAndReportsMissingEndpoint(t *testing.T) {
+	var gotPrompt, gotModel string
+	var gotImage []byte
+	edits := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/images/edits" || !edits {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"message":"Unknown endpoint."}}`))
+			return
+		}
+		file, _, err := r.FormFile("image")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		gotImage, _ = io.ReadAll(file)
+		gotPrompt, gotModel = r.FormValue("prompt"), r.FormValue("model")
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(pngBytes)}}})
+	}))
+	defer server.Close()
+	m, store, _ := newTestModule(t, server.URL+"/v1")
+	store.saved["telegram/images/photo.png"] = append([]byte(nil), pngBytes...)
+	tool := m.Tools()[0]
+
+	result, err := tool.Execute(context.Background(), tools.Call{Args: json.RawMessage(`{"prompt":"dress him as a king","images":["telegram/images/photo.png"]}`)})
+	if err != nil || result.IsError() || gotPrompt != "dress him as a king" || gotModel != "qwen-image" || string(gotImage) != string(pngBytes) {
+		t.Fatalf("result=%+v err=%v prompt=%q model=%q image=%d bytes", result, err, gotPrompt, gotModel, len(gotImage))
+	}
+	result, _ = tool.Execute(context.Background(), tools.Call{Args: json.RawMessage(`{"prompt":"x","images":["missing.png"]}`)})
+	if !result.IsError() || !strings.Contains(result.Content, "not in storage") {
+		t.Fatalf("missing image result=%+v", result)
+	}
+	edits = false
+	result, _ = tool.Execute(context.Background(), tools.Call{Args: json.RawMessage(`{"prompt":"x","images":["telegram/images/photo.png"]}`)})
+	if !result.IsError() || !strings.Contains(result.Content, "does not edit images") {
+		t.Fatalf("no edits endpoint result=%+v", result)
 	}
 }

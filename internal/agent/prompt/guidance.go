@@ -58,6 +58,7 @@ func ImageGenerationGuidance() string {
 	return strings.TrimSpace(`Image generation:
 - When the user asks to draw, generate or create a picture, call generate_image; do not write scripts or use the shell to make images.
 - Write the prompt in English and make it specific: subject, style, composition, lighting. Keep text that must appear in the image in the user's language, in quotes.
+- To change a picture (a photo the user attached, an image generated earlier), pass its temp_path or storage_path in images; you need not see it. Without images the tool draws from scratch and keeps nothing of the original, so never fall back to that for an edit: if the edit fails, tell the user why.
 - In Telegram the image is already sent to the chat: do not send it again with send_file and do not describe it at length; one short line is enough.`)
 }
 
