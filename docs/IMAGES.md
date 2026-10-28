@@ -1,6 +1,8 @@
-# Image Generation
+# Images
 
-The `image` module gives the assistant a `generate_image` tool. It works with
+The assistant draws pictures and edits the ones you send: "draw a lighthouse
+at night", or a photo with "dress him as a king". The `image` module gives it
+the `generate_image` tool, which works with
 any configured provider that serves the OpenAI images API
 (`POST <base_url>/images/generations`): OpenAI, xAI, a self-hosted
 OpenAI-compatible server, and Gemini through its `/openai` path. Anthropic and
@@ -24,7 +26,7 @@ In setup.json:
 
 ```json
 "modules": {
-  "image": {"enabled": true, "provider": "foresko", "model": "qwen-image", "size": "1024x1024"}
+  "image": {"enabled": true, "provider": "openai", "model": "gpt-image-1", "size": "1024x1024"}
 }
 ```
 
@@ -50,7 +52,22 @@ images  optional storage paths of up to 4 images to edit or use as references
   downloaded at once. Requests time out after 5 minutes, images are at most
   50 MB.
 - The image is saved to temporary storage under `images/`; the result names
-  the path, so the assistant can keep it with `storage_save` or send it again
+  the path, so the assistant can keep it with `storage_save_temp` or send it again
   with `send_file`.
 - In a Telegram chat it is also sent as a photo; one larger than Telegram's
   10 MB photo limit goes as a document.
+
+## Photos you send
+
+A photo sent in Telegram is saved to temporary storage under
+`telegram/images/` and attached to your message.
+
+- A chat model with image input sees the photo itself.
+- A model without image input does not see it, but its message names the
+  file's path, so the model can still hand the photo to a tool: edit it with
+  `generate_image` (`images`), save it with `storage_save_temp`, or send it
+  back with `send_file`.
+- Editing needs a provider with `images/edits`. Where the image provider has
+  none, the assistant says so; with a subagent that can see images it may
+  offer a new picture drawn from a description of the photo instead, and says
+  that it is not an edit of the original.

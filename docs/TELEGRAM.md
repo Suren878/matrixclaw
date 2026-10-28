@@ -131,7 +131,7 @@ mode supports text answers only.
 
 | You send | What happens |
 |---|---|
-| Photo or image (JPEG, PNG, GIF, WebP; up to 8 MB) | Saved to temporary Storage and sent to the session with your caption ("Describe this image." without one). |
+| Photo or image (JPEG, PNG, GIF, WebP; up to 8 MB) | Saved to temporary Storage and sent to the session with your caption ("Describe this image." without one). With the image module on, a caption such as "make it a watercolor" edits it. |
 | Other file (up to 25 MB) | Saved to temporary Storage under `telegram/files/`; the bot replies with the path. Keep or delete it from `/modules → Storage → Temporary Files`. |
 | Voice message or audio (up to 25 MB) | Transcribed by the STT module; the bot replies `Transcribed: <text>` and sends the text to the session. |
 | Location | Sent as a prompt with the coordinates and the street address from OpenStreetMap. |
@@ -141,8 +141,10 @@ your location and a list of nearby places from OpenStreetMap added. Without a
 location shared in the last 30 minutes, the bot asks you to share one first.
 
 The assistant can send storage files back as documents with the `send_file`
-tool (up to 50 MB). Speech from `/tts` or the `text_to_speech` tool is sent as
+tool (up to 50 MB). Images from `generate_image` arrive as photos (as a
+document above Telegram's 10 MB photo limit). Speech from `/tts` or the `text_to_speech` tool is sent as
 audio and a copy is saved to Storage under `telegram/audio/`.
 
-See [Storage](STORAGE.md) for storage paths and cleanup, and
-[Voice](VOICE.md) for TTS and STT setup.
+See [Storage](STORAGE.md) for storage paths and cleanup,
+[Voice](VOICE.md) for TTS and STT setup, and [Images](IMAGES.md) for image
+generation and editing.

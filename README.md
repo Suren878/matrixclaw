@@ -270,10 +270,10 @@ say why. See [Todo List](docs/TODO_LIST.md).
 SearXNG, and `web_fetch` returning a page's main content as markdown. Switch
 providers in `/modules` without restarting. See [Web Search](docs/WEB_SEARCH.md).
 
-**Image generation.** `generate_image` draws through any configured provider
-with an OpenAI-compatible images endpoint (OpenAI, xAI, Gemini, a self-hosted
-server); in Telegram the picture arrives as a photo. See
-[Image Generation](docs/IMAGES.md).
+**Images.** `generate_image` draws through any configured provider with an
+OpenAI-compatible images API (OpenAI, xAI, Gemini, a self-hosted server) and
+edits photos you send, even when the chat model cannot see images; in Telegram
+the picture arrives as a photo. See [Images](docs/IMAGES.md).
 
 **Browser.** With a browser MCP server (for example Playwright) connected, the
 assistant can open pages, click, type, wait and take screenshots.
@@ -357,7 +357,7 @@ tool contract and API roles.
 | [docs/BROWSER.md](docs/BROWSER.md) | browser tools through MCP |
 | [docs/WEB_SEARCH.md](docs/WEB_SEARCH.md) | `web_search` and `web_fetch` |
 | [docs/VOICE.md](docs/VOICE.md) | local TTS/STT, realtime voice, telephony |
-| [docs/IMAGES.md](docs/IMAGES.md) | image generation module |
+| [docs/IMAGES.md](docs/IMAGES.md) | image generation and editing |
 | [docs/STORAGE.md](docs/STORAGE.md) | storage module and Telegram files |
 | [docs/TODO_LIST.md](docs/TODO_LIST.md) | todo list |
 | [docs/TESTING.md](docs/TESTING.md) | testing strategy |

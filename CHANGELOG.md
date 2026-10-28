@@ -1,11 +1,24 @@
 # Changelog
 
-## Unreleased
+## v0.2.3
 
-- Image generation: the `image` module adds `generate_image`, which draws
-  through a configured provider's OpenAI-compatible images endpoint; in
-  Telegram the image is sent as a photo. With `images` it edits attached or
-  earlier images through `images/edits`. See docs/IMAGES.md.
+The assistant now works with images: it draws them, edits photos you send and
+delivers the result to Telegram as a photo.
+
+- **Image module.** `generate_image` draws through any configured provider
+  with an OpenAI-compatible images API (OpenAI, xAI, Gemini through its
+  `/openai` path, a self-hosted server). Pick the provider and model in
+  `/modules` -> Image generation; the provider's key and base URL are reused
+  and the model list comes from its `/models`. See docs/IMAGES.md.
+- **Editing.** With `images` (up to four storage paths: a photo you attached,
+  an image generated earlier) the call goes to `images/edits`. A provider
+  without that endpoint gets a clear error instead of a new picture drawn
+  from scratch.
+- **Telegram.** Generated images arrive as photos (`sendPhoto`), as a
+  document above the 10 MB photo limit.
+- **Models without image input** are told that an attached image is still in
+  storage and usable by path, instead of "not sent", so they pass the photo to
+  a tool rather than asking you to describe it.
 
 ## v0.2.2
 
